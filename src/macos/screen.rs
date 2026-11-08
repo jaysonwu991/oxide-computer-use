@@ -16,8 +16,10 @@ pub fn capture(window: Option<i64>) -> Result<Vec<u8>> {
         .duration_since(UNIX_EPOCH)
         .map(|elapsed| elapsed.as_millis())
         .unwrap_or(0);
-    let path =
-        std::env::temp_dir().join(format!("computer-use-{}-{stamp}.png", std::process::id()));
+    let path = std::env::temp_dir().join(format!(
+        "oxide-computer-use-{}-{stamp}.png",
+        std::process::id()
+    ));
     let mut command = Command::new("screencapture");
     command.arg("-x").arg("-o");
     if let Some(number) = window {

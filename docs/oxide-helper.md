@@ -12,7 +12,7 @@ of this repository's server:
 ```sh
 cd /path/to/oxide
 python3 crates/desktop/computer-use/build.py \
-  --server /absolute/path/computer-use/target/release/computer-use \
+  --server /absolute/path/oxide-computer-use/target/release/oxide-computer-use \
   --output "$PWD/crates/desktop/artifacts/Oxide Computer Use.app"
 ```
 
@@ -25,19 +25,19 @@ runtime can impose a higher minimum. Other OS/CPU versions need validation.
 Move the app to its intended stable location, then register its proxy:
 
 ```sh
-oxide mcp add computer-use "/absolute/path/Oxide Computer Use.app/Contents/MacOS/oxide-computer-use" --mcp
+oxide mcp add oxide-computer-use "/absolute/path/Oxide Computer Use.app/Contents/MacOS/oxide-computer-use" --mcp
 ```
 
-Review the existing entry before replacing it; use a separate `computer-use-*`
+Review the existing entry before replacing it; use a separate `oxide-computer-use-*`
 name for a side-by-side trial. Reconnect the MCP server or restart Oxide. Running
-`computer-use install --client oxide` afterward registers the standalone runtime
+`oxide-computer-use install --client oxide` afterward registers the standalone runtime
 again; it does not select the helper.
 
 ## Permissions, activity and cancellation
 
 The proxy launches a new native app instance through LaunchServices, then
 bridges stdio MCP over a private Unix socket. Each connection owns its helper and
-runtime. It preserves `HOME`, `COMPUTER_USE_CONFIG` and cwd so custom app policy
+runtime. It preserves `HOME`, `OXIDE_COMPUTER_USE_CONFIG` and cwd so custom app policy
 is not lost. The native menu-bar cursor identifies a connected session and offers
 permission diagnostics, user-initiated grant prompts, and **Stop computer use and
 quit**. A connection alone is not evidence that an action is running.

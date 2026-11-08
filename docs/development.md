@@ -20,11 +20,11 @@ cargo fmt --check
 ```
 
 ```sh
-./target/debug/computer-use tools
-./target/debug/computer-use doctor
-./target/debug/computer-use call list_apps
-./target/debug/computer-use install --client codex --print
-printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | ./target/debug/computer-use mcp
+./target/debug/oxide-computer-use tools
+./target/debug/oxide-computer-use doctor
+./target/debug/oxide-computer-use call list_apps
+./target/debug/oxide-computer-use install --client codex --print
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | ./target/debug/oxide-computer-use mcp
 ```
 
 ```sh
@@ -136,18 +136,18 @@ should do the same. Filter helper surfaces at the enumeration layer, as
 
 ## Manual smoke checklist
 
-On a machine where the terminal is trusted (`computer-use doctor` reports both
+On a machine where the terminal is trusted (`oxide-computer-use doctor` reports both
 permissions granted):
 
 ```sh
-computer-use call list_apps
-computer-use call get_app_state --args '{"app":"TextEdit","window":0,"include_frames":true}'
-computer-use call click --args '{"app":"TextEdit","element_index":6}'
-computer-use call set_value --args '{"app":"TextEdit","element_index":6,"value":"hello"}'
-computer-use call select_text --args '{"app":"TextEdit","element_index":6,"text":"hello"}'
-computer-use call press_key --args '{"app":"TextEdit","key":"c","modifiers":"cmd"}'
-computer-use call drag --args '{"app":"TextEdit","from_x":300,"from_y":300,"to_x":500,"to_y":300}'
-computer-use call get_app_state --args '{"app":"TextEdit","include_screenshot":true}'
+oxide-computer-use call list_apps
+oxide-computer-use call get_app_state --args '{"app":"TextEdit","window":0,"include_frames":true}'
+oxide-computer-use call click --args '{"app":"TextEdit","element_index":6}'
+oxide-computer-use call set_value --args '{"app":"TextEdit","element_index":6,"value":"hello"}'
+oxide-computer-use call select_text --args '{"app":"TextEdit","element_index":6,"text":"hello"}'
+oxide-computer-use call press_key --args '{"app":"TextEdit","key":"c","modifiers":"cmd"}'
+oxide-computer-use call drag --args '{"app":"TextEdit","from_x":300,"from_y":300,"to_x":500,"to_y":300}'
+oxide-computer-use call get_app_state --args '{"app":"TextEdit","include_screenshot":true}'
 ```
 
 Expected: the click reports AXPress or a pointer event; `set_value` echoes the
@@ -175,7 +175,7 @@ A release is a draft that a maintainer publishes. Two workflows split the job:
      with `scripts/set-version.sh v<version>` and refreshes `Cargo.lock` with
      `cargo update --workspace`, so the binary reports the release it came from;
      neither change is committed back.
-   - `attach` — writes `computer-use-manifest` and uploads the two archives,
+   - `attach` — writes `oxide-computer-use-manifest` and uploads the two archives,
      their `.sha256` files, the manifest and `install.sh` itself, which makes
      `releases/latest/download/install.sh` address the current release. It does
      not create the release and does not touch the notes: a tag pushed by hand
@@ -187,7 +187,7 @@ resolves `v0.0.1`: **Actions → Release Drafter → Run workflow** with
 `version: v0.1.0`.
 
 `install.sh` reads the release through that manifest, or one pinned with
-`COMPUTER_USE_VERSION`. Its failure paths matter more than its happy path: with
+`OXIDE_COMPUTER_USE_VERSION`. Its failure paths matter more than its happy path: with
 no release published it must stop with the manifest message rather than install
 half a binary, and a truncated download must fail the checksum.
 

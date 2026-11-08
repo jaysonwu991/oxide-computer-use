@@ -1,4 +1,4 @@
-//! Platform selection for the computer-use runtime.
+//! Platform selection for the oxide-computer-use runtime.
 
 /// What one observation returns: the text an agent reads, plus an optional
 /// screenshot kept separate so it never inflates the text.

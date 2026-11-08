@@ -8,7 +8,7 @@ use std::process::{Command, Stdio};
 use serde_json::{json, Value};
 
 fn binary() -> &'static str {
-    env!("CARGO_BIN_EXE_computer-use")
+    env!("CARGO_BIN_EXE_oxide-computer-use")
 }
 
 fn run(args: &[&str]) -> (String, String, bool) {
@@ -27,7 +27,7 @@ fn run_with_home(home: &Path, args: &[&str]) -> (String, String, bool) {
     let output = Command::new(binary())
         .args(args)
         .env("HOME", home)
-        .env_remove("COMPUTER_USE_CONFIG")
+        .env_remove("OXIDE_COMPUTER_USE_CONFIG")
         .output()
         .expect("the binary runs");
     (
@@ -120,16 +120,16 @@ fn install_prints_a_stdio_entry_for_each_client_shape() {
     let (stdout, _, ok) = run(&["install", "--client", "oxide", "--print"]);
     assert!(ok);
     let value: Value = serde_json::from_str(&stdout).expect("print emits JSON");
-    let entry = &value["mcpServers"]["computer-use"];
+    let entry = &value["mcpServers"]["oxide-computer-use"];
     assert_eq!(entry["args"], json!(["mcp"]));
     assert!(entry["command"]
         .as_str()
-        .is_some_and(|command| command.ends_with("computer-use")));
+        .is_some_and(|command| command.ends_with("oxide-computer-use")));
 
     let (stdout, _, ok) = run(&["install", "--client", "codex", "--print"]);
     assert!(ok);
     assert!(
-        stdout.contains("[mcp_servers.computer-use-local]"),
+        stdout.contains("[mcp_servers.oxide-computer-use-local]"),
         "Codex ships its own Computer Use, so this client gets a name it does not own: {stdout}"
     );
     assert!(stdout.contains("args = [\"mcp\"]"), "{stdout}");
@@ -138,7 +138,7 @@ fn install_prints_a_stdio_entry_for_each_client_shape() {
     assert!(ok);
     let value: Value = serde_json::from_str(&stdout).expect("print emits JSON");
     assert!(
-        value["mcpServers"]["computer-use-local"].is_object(),
+        value["mcpServers"]["oxide-computer-use-local"].is_object(),
         "Claude Code gets a name it does not reserve: {stdout}"
     );
 }
@@ -153,7 +153,10 @@ fn install_writes_each_clients_config_file() {
         &std::fs::read_to_string(home.join(".oxide/mcp.json")).expect("oxide config"),
     )
     .unwrap();
-    assert_eq!(oxide["mcpServers"]["computer-use"]["args"], json!(["mcp"]));
+    assert_eq!(
+        oxide["mcpServers"]["oxide-computer-use"]["args"],
+        json!(["mcp"])
+    );
 
     let (_, _, ok) = run_with_home(&home, &["install", "--client", "claude"]);
     assert!(ok);
@@ -161,13 +164,13 @@ fn install_writes_each_clients_config_file() {
         &std::fs::read_to_string(home.join(".claude.json")).expect("claude config"),
     )
     .unwrap();
-    assert!(claude["mcpServers"]["computer-use-local"].is_object());
-    assert!(claude["mcpServers"]["computer-use"].is_null());
+    assert!(claude["mcpServers"]["oxide-computer-use-local"].is_object());
+    assert!(claude["mcpServers"]["oxide-computer-use"].is_null());
 
     let (_, _, ok) = run_with_home(&home, &["install", "--client", "codex"]);
     assert!(ok);
     let codex = std::fs::read_to_string(home.join(".codex/config.toml")).expect("codex config");
-    assert!(codex.contains("[mcp_servers.computer-use-local]"));
+    assert!(codex.contains("[mcp_servers.oxide-computer-use-local]"));
 
     let (_, _, ok) = run_with_home(&home, &["install", "--client", "cursor"]);
     assert!(ok);
@@ -197,7 +200,7 @@ fn an_install_keeps_settings_it_did_not_write() {
     let value: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     assert_eq!(value["theme"], json!("dark"));
     assert!(value["mcpServers"]["other"].is_object());
-    assert!(value["mcpServers"]["computer-use"].is_object());
+    assert!(value["mcpServers"]["oxide-computer-use"].is_object());
     std::fs::remove_dir_all(&home).ok();
 }
 
@@ -222,7 +225,7 @@ fn the_names_codex_computer_use_owns_are_refused() {
         assert!(!ok, "`{name}` was accepted for Codex");
         assert!(stderr.contains("reserved"), "{stderr}");
         assert!(
-            stderr.contains("computer-use-local"),
+            stderr.contains("oxide-computer-use-local"),
             "the error names the default to use instead: {stderr}"
         );
     }
@@ -230,7 +233,7 @@ fn the_names_codex_computer_use_owns_are_refused() {
 
 #[test]
 fn a_codex_install_leaves_codex_computer_use_settings_alone() {
-    let home = temporary_home("codex-computer-use");
+    let home = temporary_home("codex-oxide-computer-use");
     let path = home.join(".codex/config.toml");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(
@@ -248,7 +251,7 @@ fn a_codex_install_leaves_codex_computer_use_settings_alone() {
 
     let (stdout, stderr, ok) = run_with_home(&home, &["install", "--client", "codex"]);
     assert!(ok, "{stderr}");
-    assert!(stdout.contains("computer-use-local"), "{stdout}");
+    assert!(stdout.contains("oxide-computer-use-local"), "{stdout}");
 
     let text = std::fs::read_to_string(&path).unwrap();
     assert!(
@@ -258,7 +261,10 @@ fn a_codex_install_leaves_codex_computer_use_settings_alone() {
     assert!(text.contains("[computer_use]"), "{text}");
     assert!(text.contains("default_app_access = \"deny\""), "{text}");
     assert!(text.contains("[mcp_servers.cua_repl]"), "{text}");
-    assert!(text.contains("[mcp_servers.computer-use-local]"), "{text}");
+    assert!(
+        text.contains("[mcp_servers.oxide-computer-use-local]"),
+        "{text}"
+    );
     std::fs::remove_dir_all(&home).ok();
 }
 
@@ -282,7 +288,10 @@ fn a_codex_install_warns_about_an_entry_under_codex_computer_use_name() {
 
     let text = std::fs::read_to_string(&path).unwrap();
     assert!(text.contains("[mcp_servers.computer-use]"), "{text}");
-    assert!(text.contains("[mcp_servers.computer-use-local]"), "{text}");
+    assert!(
+        text.contains("[mcp_servers.oxide-computer-use-local]"),
+        "{text}"
+    );
     std::fs::remove_dir_all(&home).ok();
 }
 
@@ -304,7 +313,7 @@ fn the_app_policy_round_trips_through_the_cli() {
     let (_, _, ok) = run_with_home(&home, &["apps", "reset"]);
     assert!(ok);
     let config: Value = serde_json::from_str(
-        &std::fs::read_to_string(home.join(".config/computer-use/config.json")).unwrap(),
+        &std::fs::read_to_string(home.join(".config/oxide-computer-use/config.json")).unwrap(),
     )
     .unwrap();
     assert_eq!(config["denied_apps"], json!([]));

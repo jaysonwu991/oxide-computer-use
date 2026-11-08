@@ -20,7 +20,7 @@ use runtime::Runtime;
 
 #[derive(Parser)]
 #[command(
-    name = "computer-use",
+    name = "oxide-computer-use",
     version,
     about = "Computer Use MCP server for any agent: Oxide, Claude Code, Codex or Cursor, driving macOS apps through native accessibility APIs"
 )]
@@ -70,8 +70,8 @@ enum Command {
         /// Write the project-scoped config instead of the user-scoped one.
         #[arg(long)]
         project: bool,
-        /// Server name to register. Defaults to `computer-use`, or
-        /// `computer-use-local` for the clients that ship their own Computer
+        /// Server name to register. Defaults to `oxide-computer-use`, or
+        /// `oxide-computer-use-local` for the clients that ship their own Computer
         /// Use: Claude Code reserves the plain name, and Codex's bundled plugin
         /// owns it.
         #[arg(long)]
@@ -101,7 +101,7 @@ enum AppsCommand {
 
 fn main() {
     if let Err(error) = run() {
-        eprintln!("computer-use: {error:#}");
+        eprintln!("oxide-computer-use: {error:#}");
         std::process::exit(1);
     }
 }
@@ -279,7 +279,7 @@ fn doctor(as_json: bool, prompt: bool) -> Result<()> {
             }))?
         );
     } else {
-        println!("computer-use {}", env!("CARGO_PKG_VERSION"));
+        println!("oxide-computer-use {}", env!("CARGO_PKG_VERSION"));
         println!(
             "macOS: {}",
             version.clone().unwrap_or_else(|| "unknown".to_string())

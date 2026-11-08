@@ -4,9 +4,9 @@ Start with three commands. They separate setup, discovery and reading, which is
 where almost every problem lives.
 
 ```sh
-computer-use doctor                     # permissions, policy, versions
-computer-use call list_apps             # what the window server reports
-computer-use call get_app_state --args '{"app":"TextEdit","max_tree_nodes":200}'
+oxide-computer-use doctor                     # permissions, policy, versions
+oxide-computer-use call list_apps             # what the window server reports
+oxide-computer-use call get_app_state --args '{"app":"TextEdit","max_tree_nodes":200}'
 ```
 
 `doctor --json` gives the same information for a script:
@@ -19,7 +19,7 @@ computer-use call get_app_state --args '{"app":"TextEdit","max_tree_nodes":200}'
   "screen_recording": true,
   "allowed_apps": [],
   "denied_apps": ["1Password"],
-  "config": "/Users/you/.config/computer-use/config.json"
+  "config": "/Users/you/.config/oxide-computer-use/config.json"
 }
 ```
 
@@ -29,7 +29,7 @@ computer-use call get_app_state --args '{"app":"TextEdit","max_tree_nodes":200}'
 
 The MCP handshake needs no permission; the first accessibility call does. Run
 the `permissions` MCP tool from the failing client. It checks the same process
-and reports the observed launching app and Settings guidance. A `computer-use
+and reports the observed launching app and Settings guidance. A `oxide-computer-use
 doctor` run in a separate terminal measures a different host.
 
 Grant it to the **responsible app**, not to this binary: your terminal if you run
@@ -134,8 +134,8 @@ The server prefixes these with the call that failed, for example
 
 | Symptom | Cause | What to do |
 | --- | --- | --- |
-| ``is on the deny list`` | `denied_apps` matched | `computer-use apps allow "X"` if intended; the deny list otherwise wins |
-| ``is not on the allow list`` | An allow list exists and lacks the app | `computer-use apps allow "X"` |
+| ``is on the deny list`` | `denied_apps` matched | `oxide-computer-use apps allow "X"` if intended; the deny list otherwise wins |
+| ``is not on the allow list`` | An allow list exists and lacks the app | `oxide-computer-use apps allow "X"` |
 | The policy changed but the server still refuses | The policy is read when the server starts | Restart the session or reconnect the client |
 | Nothing prompts before an action | The client, not the server, owns approvals | Configure approval rules in the client; this server only marks read-only tools |
 
@@ -143,20 +143,20 @@ The server prefixes these with the call that failed, for example
 
 | Symptom | Cause | What to do |
 | --- | --- | --- |
-| `install.sh` says it found no release manifest | No release published yet, or `COMPUTER_USE_REPO` points somewhere without one | Build from the checkout ([docs/install.md](install.md)), or pass `COMPUTER_USE_VERSION=v<version>` for a release that exists |
+| `install.sh` says it found no release manifest | No release published yet, or `OXIDE_COMPUTER_USE_REPO` points somewhere without one | Build from the checkout ([docs/install.md](install.md)), or pass `OXIDE_COMPUTER_USE_VERSION=v<version>` for a release that exists |
 | The release page has the notes but no archives yet | The draft was just published; `release.yml` attaches the assets once it has built them | Wait for the workflow to go green; the installer's manifest message is the symptom until then |
 | Checksum verification failed | Truncated or replaced download | Rerun the installer; if it repeats, download the archive from the release page and verify it by hand |
 | The downloaded binary did not run | Archive for the other architecture, or a quarantine flag on the file | `uname -m` to confirm the platform; `xattr -d com.apple.quarantine <binary>` if it was downloaded by a browser rather than by the installer |
-| `computer-use: command not found` after installing | `~/.local/bin` is not on `PATH` | The installer warns about this; add the directory, then reopen the terminal the agent runs in |
+| `oxide-computer-use: command not found` after installing | `~/.local/bin` is not on `PATH` | The installer warns about this; add the directory, then reopen the terminal the agent runs in |
 
 ## Clients
 
 | Symptom | Cause | What to do |
 | --- | --- | --- |
-| Claude Code ignores the server | `computer-use` is a reserved server name there | Register `computer-use-local` (`install --client claude` does), or another `--name` |
-| Codex shows two Computer Use tool sets | Codex ships its own Computer Use plugin; this server registers beside it | Expected. The plugin's tools are in Codex's `computer_use` namespace; this server is `computer-use-local` and only its calls obey this project's app policy |
-| `install --client codex --name computer-use` is refused | Codex's bundled Computer Use plugin owns that name, as it does `computer_use`, `node_repl`, `cua_repl` and `codex_apps` | Use the default `computer-use-local`, or another name Codex does not already use |
-| `install --client codex` warns that `mcp_servers.computer-use` is already there | An entry from an older install sits under the name Codex's plugin owns | Keep `computer-use-local` and delete that table: two entries, one of them shadowed, is what the warning is about |
+| Claude Code ignores the server | `computer-use` is a reserved server name there | Register `oxide-computer-use-local` (`install --client claude` does), or another `--name` |
+| Codex shows two Computer Use tool sets | Codex ships its own Computer Use plugin; this server registers beside it | Expected. The plugin's tools are in Codex's `computer_use` namespace; this server is `oxide-computer-use-local` and only its calls obey this project's app policy |
+| `install --client codex --name computer-use` is refused | Codex's bundled Computer Use plugin owns that name, as it does `computer_use`, `node_repl`, `cua_repl` and `codex_apps` | Use the default `oxide-computer-use-local`, or another name Codex does not already use |
+| `install --client codex` warns that `mcp_servers.computer-use` is already there | An entry from an older install sits under the name Codex's plugin owns | Keep `oxide-computer-use-local` and delete that table: two entries, one of them shadowed, is what the warning is about |
 | A client cannot parse the config after an edit | The file was invalid before `install` ran; it refuses to rewrite it | Fix the JSON/TOML, rerun `install` |
 | The client never starts the server | Wrong absolute path, or the binary is not executable | `install --print` to see the exact command, then run it by hand |
 | Tools appear but calls fail with "Connection closed" | The server exited: bad launch command, or a panic | Run the same command in a terminal and send one request; a clean server prints JSON and nothing else |
@@ -176,10 +176,10 @@ The server prefixes these with the call that failed, for example
 ## Collecting evidence for a report
 
 ```sh
-computer-use doctor --json
-computer-use tools
-computer-use call list_apps
-computer-use call get_app_state --args '{"app":"<app>","max_tree_nodes":400,"include_frames":true}'
+oxide-computer-use doctor --json
+oxide-computer-use tools
+oxide-computer-use call list_apps
+oxide-computer-use call get_app_state --args '{"app":"<app>","max_tree_nodes":400,"include_frames":true}'
 ```
 
 Include the exact `element_index` or `window` used, and the reply verbatim: the

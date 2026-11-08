@@ -69,7 +69,7 @@ fn handle(runtime: &mut Runtime, request: &Value) -> Option<Value> {
             ),
             "capabilities": { "tools": { "listChanged": false } },
             "serverInfo": {
-                "name": "computer-use",
+                "name": "oxide-computer-use",
                 "version": env!("CARGO_PKG_VERSION")
             },
             "instructions": "Use this server for native apps and signed-in browser tasks, including filling forms. Call permissions for setup diagnostics in the actual MCP host, list_apps to find the target, then get_app_state before acting on indexes from its newest snapshot. Re-observe after actions and use screenshot or include_screenshot for visual verification and client previews. Screenshots are snapshots, not a live stream. Respect requests to leave submission to the user. AXPress and set_value can work in the background; keyboard and pointer input activate the app and use the real desktop. Never approve OS permission dialogs yourself."
@@ -135,7 +135,7 @@ mod tests {
         );
         assert_eq!(
             response["result"]["serverInfo"]["name"],
-            json!("computer-use")
+            json!("oxide-computer-use")
         );
         assert!(response["result"]["capabilities"]["tools"].is_object());
     }

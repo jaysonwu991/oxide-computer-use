@@ -1,38 +1,38 @@
 #!/bin/sh
-# Install the computer-use MCP server.
+# Install the oxide-computer-use MCP server.
 #
-#   curl -fsSL https://raw.githubusercontent.com/jaysonwu991/computer-use/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/jaysonwu991/oxide-computer-use/main/install.sh | sh
 #
 # Environment overrides:
-#   COMPUTER_USE_VERSION      version to install, with or without a leading "v"
+#   OXIDE_COMPUTER_USE_VERSION      version to install, with or without a leading "v"
 #                             (default: the latest release)
-#   COMPUTER_USE_INSTALL_DIR  directory to install the binary into
+#   OXIDE_COMPUTER_USE_INSTALL_DIR  directory to install the binary into
 #                             (default: $HOME/.local/bin)
-#   COMPUTER_USE_REPO         GitHub repository slug
-#                             (default: jaysonwu991/computer-use)
+#   OXIDE_COMPUTER_USE_REPO         GitHub repository slug
+#                             (default: jaysonwu991/oxide-computer-use)
 set -eu
 
-REPO="${COMPUTER_USE_REPO:-jaysonwu991/computer-use}"
-VERSION="${COMPUTER_USE_VERSION:-}"
-INSTALL_DIR="${COMPUTER_USE_INSTALL_DIR:-$HOME/.local/bin}"
+REPO="${OXIDE_COMPUTER_USE_REPO:-jaysonwu991/oxide-computer-use}"
+VERSION="${OXIDE_COMPUTER_USE_VERSION:-}"
+INSTALL_DIR="${OXIDE_COMPUTER_USE_INSTALL_DIR:-$HOME/.local/bin}"
 RELEASES="https://github.com/${REPO}/releases"
-BINARY_NAME="computer-use"
-MANIFEST_NAME="computer-use-manifest"
+BINARY_NAME="oxide-computer-use"
+MANIFEST_NAME="oxide-computer-use-manifest"
 # A file beside the binary naming the install it came from, so a machine can
 # tell a released copy from one built in a checkout.
-MARKER_NAME=".computer-use-install"
+MARKER_NAME=".oxide-computer-use-install"
 
 err() {
-    printf 'computer-use-install: error: %s\n' "$*" >&2
+    printf 'oxide-computer-use-install: error: %s\n' "$*" >&2
     exit 1
 }
 
 warn() {
-    printf 'computer-use-install: warning: %s\n' "$*" >&2
+    printf 'oxide-computer-use-install: warning: %s\n' "$*" >&2
 }
 
 info() {
-    printf 'computer-use-install: %s\n' "$*" >&2
+    printf 'oxide-computer-use-install: %s\n' "$*" >&2
 }
 
 download() {
@@ -85,7 +85,7 @@ resolve_archive() {
     manifest_url="${RELEASES}/latest/download/${MANIFEST_NAME}"
     manifest="$(fetch "$manifest_url" 2>/dev/null)" || manifest=""
     if [ -z "$manifest" ]; then
-        err "no release manifest at ${manifest_url}; pass COMPUTER_USE_VERSION=v<version> to pin a release, or build from source"
+        err "no release manifest at ${manifest_url}; pass OXIDE_COMPUTER_USE_VERSION=v<version> to pin a release, or build from source"
     fi
 
     asset="$(printf '%s\n' "$manifest" |
@@ -163,7 +163,7 @@ main() {
         *":${INSTALL_DIR}:"*) ;;
         *)
             warn "${INSTALL_DIR} is not on your PATH"
-            printf 'computer-use-install: add it with: export PATH="%s:$PATH"\n' "$INSTALL_DIR" >&2
+            printf 'oxide-computer-use-install: add it with: export PATH="%s:$PATH"\n' "$INSTALL_DIR" >&2
             ;;
     esac
 
