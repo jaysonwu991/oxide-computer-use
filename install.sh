@@ -1,0 +1,173 @@
+#!/bin/sh
+# Install the oxide-computer-use MCP server.
+#
+#   curl -fsSL https://raw.githubusercontent.com/jaysonwu991/oxide-computer-use/main/install.sh | sh
+#
+# Environment overrides:
+#   OXIDE_COMPUTER_USE_VERSION      version to install, with or without a leading "v"
+#                             (default: the latest release)
+#   OXIDE_COMPUTER_USE_INSTALL_DIR  directory to install the binary into
+#                             (default: $HOME/.local/bin)
+#   OXIDE_COMPUTER_USE_REPO         GitHub repository slug
+#                             (default: jaysonwu991/oxide-computer-use)
+set -eu
+
+REPO="${OXIDE_COMPUTER_USE_REPO:-jaysonwu991/oxide-computer-use}"
+VERSION="${OXIDE_COMPUTER_USE_VERSION:-}"
+INSTALL_DIR="${OXIDE_COMPUTER_USE_INSTALL_DIR:-$HOME/.local/bin}"
+RELEASES="https://github.com/${REPO}/releases"
+BINARY_NAME="oxide-computer-use"
+MANIFEST_NAME="oxide-computer-use-manifest"
+# A file beside the binary naming the install it came from, so a machine can
+# tell a released copy from one built in a checkout.
+MARKER_NAME=".oxide-computer-use-install"
+
+err() {
+    printf 'oxide-computer-use-install: error: %s\n' "$*" >&2
+    exit 1
+}
+
+warn() {
+    printf 'oxide-computer-use-install: warning: %s\n' "$*" >&2
+}
+
+info() {
+    printf 'oxide-computer-use-install: %s\n' "$*" >&2
+}
+
+download() {
+    if command -v curl >/dev/null 2>&1; then
+        curl --fail --silent --show-error --location "$1" --output "$2"
+    elif command -v wget >/dev/null 2>&1; then
+        wget --quiet --output-document="$2" "$1"
+    else
+        err "curl or wget is required"
+    fi
+}
+
+fetch() {
+    if command -v curl >/dev/null 2>&1; then
+        curl --fail --silent --show-error --location "$1"
+    else
+        wget --quiet --output-document=- "$1"
+    fi
+}
+
+detect_platform() {
+    os="$(uname -s)"
+    arch="$(uname -m)"
+
+    if [ "$os" != "Darwin" ]; then
+        err "no ${os} build: this server drives the macOS accessibility and event APIs, and a build for another OS only returns that error"
+    fi
+
+    case "$arch" in
+        arm64 | aarch64) arch_part="arm64" ;;
+        x86_64 | amd64) arch_part="x64" ;;
+        *) err "unsupported architecture: $arch" ;;
+    esac
+
+    printf 'macos-%s\n' "$arch_part"
+}
+
+# Prints the URL of the archive for one platform. A pinned version needs no
+# manifest; the latest release is read from one, so the asset names can change
+# between releases without breaking this script.
+resolve_archive() {
+    platform="$1"
+    archive="${BINARY_NAME}-${platform}.tar.gz"
+
+    if [ -n "$VERSION" ]; then
+        printf '%s/download/v%s/%s\n' "$RELEASES" "${VERSION#v}" "$archive"
+        return 0
+    fi
+
+    manifest_url="${RELEASES}/latest/download/${MANIFEST_NAME}"
+    manifest="$(fetch "$manifest_url" 2>/dev/null)" || manifest=""
+    if [ -z "$manifest" ]; then
+        err "no release manifest at ${manifest_url}; pass OXIDE_COMPUTER_USE_VERSION=v<version> to pin a release, or build from source"
+    fi
+
+    asset="$(printf '%s\n' "$manifest" |
+        awk -v key="${platform}:" '$1 == key { print $2 }')"
+    if [ -z "$asset" ]; then
+        err "the release manifest lists no ${platform} archive: ${manifest_url}"
+    fi
+
+    printf '%s/latest/download/%s\n' "$RELEASES" "$asset"
+}
+
+verify_checksum() {
+    file="$1"
+    sums="$2"
+    expected="$(cut -d' ' -f1 < "$sums" | head -n1)"
+    [ -n "$expected" ] || return 0
+
+    if command -v sha256sum >/dev/null 2>&1; then
+        actual="$(sha256sum "$file" | cut -d' ' -f1)"
+    elif command -v shasum >/dev/null 2>&1; then
+        actual="$(shasum -a 256 "$file" | cut -d' ' -f1)"
+    elif command -v openssl >/dev/null 2>&1; then
+        actual="$(openssl dgst -sha256 "$file" | sed 's/^.*= //')"
+    else
+        warn "no sha256 tool found; skipping checksum verification"
+        return 0
+    fi
+
+    [ "$expected" = "$actual" ] || err "checksum verification failed; the download was truncated or replaced"
+}
+
+main() {
+    command -v uname >/dev/null 2>&1 || err "uname is required"
+    command -v tar >/dev/null 2>&1 || err "tar is required"
+    command -v mktemp >/dev/null 2>&1 || err "mktemp is required"
+
+    platform="$(detect_platform)"
+    url="$(resolve_archive "$platform")"
+    archive="${url##*/}"
+
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT INT TERM
+
+    info "downloading ${archive}"
+    download "$url" "${tmp}/${archive}" || err "download failed: ${url}"
+
+    if download "${url}.sha256" "${tmp}/${archive}.sha256" 2>/dev/null; then
+        verify_checksum "${tmp}/${archive}" "${tmp}/${archive}.sha256"
+    else
+        warn "checksum file unavailable; skipping verification"
+    fi
+
+    tar -xzf "${tmp}/${archive}" -C "$tmp"
+    [ -f "${tmp}/${BINARY_NAME}" ] || err "the archive does not contain ${BINARY_NAME}"
+
+    # Run the download before moving it into place: a macOS quarantine flag or an
+    # archive for the other architecture fails here, not after the install.
+    "${tmp}/${BINARY_NAME}" --version >/dev/null 2>&1 ||
+        err "the downloaded binary did not run; check the architecture, or clear the download's quarantine flag"
+
+    mkdir -p "$INSTALL_DIR"
+    mv -f "${tmp}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
+    chmod 0755 "${INSTALL_DIR}/${BINARY_NAME}"
+
+    # The version is read back from the installed binary, so the marker names
+    # what is here rather than what was asked for.
+    installed_version="$("${INSTALL_DIR}/${BINARY_NAME}" --version 2>/dev/null | awk '{print $2}')" \
+        || installed_version=""
+    printf 'source %s\nversion %s\n' "$REPO" "$installed_version" \
+        > "${INSTALL_DIR}/${MARKER_NAME}"
+
+    info "installed ${BINARY_NAME} ${installed_version} to ${INSTALL_DIR}/${BINARY_NAME}"
+
+    case ":${PATH:-}:" in
+        *":${INSTALL_DIR}:"*) ;;
+        *)
+            warn "${INSTALL_DIR} is not on your PATH"
+            printf 'oxide-computer-use-install: add it with: export PATH="%s:$PATH"\n' "$INSTALL_DIR" >&2
+            ;;
+    esac
+
+    info "next: ${BINARY_NAME} doctor, then ${BINARY_NAME} install --client oxide|claude|codex|cursor|desktop"
+}
+
+main "$@"

@@ -1,0 +1,59 @@
+name: Release Drafter
+
+# Keeps the draft release for the next `v*` tag up to date. Publishing that
+# draft is the release: it creates the tag, and release.yml builds the archives
+# and attaches them. Nothing here publishes, and nothing in release.yml writes
+# the notes.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: >-
+          Version for the next draft, e.g. v0.1.0. Leave empty to take one
+          increment past the last release.
+        required: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+# Two pushes in a row must not race for the same draft.
+concurrency:
+  group: release-drafter
+  cancel-in-progress: false
+
+jobs:
+  draft:
+    name: draft the next release
+    # A pull request from a fork gets a read-only token, so the autolabeler
+    # could only fail on it. Skip the job rather than let a fork go red.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      # The draft only changes when a pull request merges into main.
+      - name: Update the draft
+        if: github.event_name != 'pull_request'
+        uses: release-drafter/release-drafter@v7
+        with:
+          config-name: release-drafter.yml
+          # Empty on a push; set only by a manual run that seeds the version.
+          version: ${{ inputs.version }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # v7 moved the autolabeler into its own action; it reads the
+      # `autolabeler` section of release-drafter.yml and applies the type labels
+      # the changelog categories match on.
+      - name: Apply type labels
+        if: github.event_name == 'pull_request'
+        uses: release-drafter/release-drafter/autolabeler@v7
+        with:
+          config-name: release-drafter.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

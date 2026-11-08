@@ -1,0 +1,168 @@
+# Release Drafter configuration for the next `v*` release.
+# .github/workflows/release-drafter.yml runs this on every push to `main` and
+# keeps one draft release in step with the merged pull requests. Publishing that
+# draft is the release: GitHub creates the tag, and
+# .github/workflows/release.yml builds the archives from it and attaches them.
+# Neither workflow writes these notes, and the drafter never publishes.
+
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+# One component, one tag series: pinning the prefix keeps a stray `nightly-*` or
+# `desktop-v*` tag out of the previous-release lookup that resolves the version.
+tag-prefix: 'v'
+change-template: '- $TITLE (#$NUMBER) by @$AUTHOR'
+change-title-escapes: '\<*_&'
+category-template: '### $TITLE'
+sort-by: merged_at
+sort-direction: descending
+
+# Drop a `feat(scope): ` prefix so the notes read as plain English. A title that
+# never had one is left alone.
+replacers:
+  - search: '/^(feat|fix|perf|refactor|docs|test|ci|build|chore)(\(.+?\))?!?:\s*/i'
+    replace: ''
+
+categories:
+  # Administrative labels that should never reach the changelog.
+  - type: 'pre-exclude'
+    when:
+      labels:
+        - 'skip-changelog'
+        - 'duplicate'
+        - 'invalid'
+        - 'question'
+        - 'wontfix'
+
+  - title: '⚠️ Breaking Changes'
+    semver-increment: 'major'
+    when:
+      - conventional:
+          breaking: true
+      - label: 'breaking'
+
+  - title: '🚀 Features'
+    semver-increment: 'minor'
+    when:
+      - conventional:
+          type: 'feat'
+      - labels:
+          - 'enhancement'
+          - 'feat'
+          - 'feature'
+
+  - title: '🐛 Fixes'
+    when:
+      - conventional:
+          type: 'fix'
+      - labels:
+          - 'bug'
+          - 'fix'
+          - 'bugfix'
+
+  - title: '⚡ Performance'
+    when:
+      - conventional:
+          type: 'perf'
+
+  - title: '📚 Documentation'
+    when:
+      - conventional:
+          type: 'docs'
+      - label: 'documentation'
+
+  - title: '🧪 Tests'
+    collapse-after: 5
+    when:
+      - conventional:
+          type: 'test'
+
+  - title: '🏗️ Build & CI'
+    collapse-after: 5
+    when:
+      - conventional:
+          types:
+            - 'ci'
+            - 'build'
+
+  - title: '📦 Dependencies'
+    collapse-after: 5
+    when:
+      labels:
+        - 'dependencies'
+        - 'deps'
+
+  - title: '🧰 Maintenance'
+    collapse-after: 5
+    when:
+      - conventional:
+          types:
+            - 'chore'
+            - 'refactor'
+      - label: 'chore'
+
+  # The one changelog category without `when` receives anything uncategorized.
+  - title: '🧩 Other Changes'
+
+# Derives the type labels from a conventional-commit title or branch name, for
+# the release-drafter/release-drafter/autolabeler@v7 step. A sentence-style
+# title matches nothing and lands in "Other Changes", which is the intent.
+autolabeler:
+  - label: 'breaking'
+    title:
+      - '/!:/'
+      - '/BREAKING[ -]CHANGE/i'
+  - label: 'enhancement'
+    title:
+      - '/^feat(\(.+?\))?!?:/i'
+    branch:
+      - '/^feat(ure)?[/-]/'
+  - label: 'bug'
+    title:
+      - '/^fix(\(.+?\))?!?:/i'
+    branch:
+      - '/^(fix|hotfix|bug)[/-]/'
+  - label: 'performance'
+    title:
+      - '/^perf(\(.+?\))?!?:/i'
+  - label: 'documentation'
+    title:
+      - '/^docs?(\(.+?\))?!?:/i'
+    branch:
+      - '/^docs?[/-]/'
+  - label: 'test'
+    title:
+      - '/^test(\(.+?\))?!?:/i'
+  - label: 'ci'
+    title:
+      - '/^(ci|build)(\(.+?\))?!?:/i'
+  - label: 'chore'
+    title:
+      - '/^chore(\(.+?\))?!?:/i'
+  - label: 'dependencies'
+    title:
+      - '/^(deps|dependabot):/i'
+    branch:
+      - '/^dependabot[/-]/'
+
+no-changes-template: |
+  _No user-facing changes in this release._
+
+template: |
+  ## What's Changed
+
+  $CHANGES
+
+  ## Install
+
+  ```sh
+  curl -fsSL https://raw.githubusercontent.com/$OWNER/$REPOSITORY/main/install.sh | sh
+  ```
+
+  The installer reads `oxide-computer-use-manifest` from this release, verifies the
+  archive's SHA-256 and puts the binary in `~/.local/bin`. The archives for both
+  macOS targets, their `.sha256` files, the manifest and `install.sh` itself are
+  attached below a few minutes after this release is published.
+
+  ## Full Changelog
+
+  https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION
