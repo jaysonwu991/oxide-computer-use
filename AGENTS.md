@@ -1,4 +1,4 @@
-# oxide-computer-use
+# oxide-reins
 
 Computer Use as a stdio MCP server for any agent on macOS: the running apps, an
 app's accessibility tree, and the actions that drive it.
@@ -26,8 +26,8 @@ app's accessibility tree, and the actions that drive it.
   `input` (paced synthetic events from a private HID source), `screen`
   (screenshot), `cf` (Core Foundation bridging).
 - `tests/cli.rs`: the binary as an MCP client sees it.
-- `install.sh`: the `curl | sh` installer. It reads `oxide-computer-use-manifest` from
-  the latest release (or a pinned `OXIDE_COMPUTER_USE_VERSION`), verifies the
+- `install.sh`: the `curl | sh` installer. It reads `oxide-reins-manifest` from
+  the latest release (or a pinned `OXIDE_REINS_VERSION`), verifies the
   archive's SHA-256, and installs into `~/.local/bin`.
 - `scripts/set-version.sh`: stamps a release tag into `Cargo.toml`; the release
   workflow calls it and never commits the result.
@@ -62,13 +62,13 @@ app's accessibility tree, and the actions that drive it.
   methods.
 - Accessibility and Screen Recording are user permissions. Ask, explain, and
   fail with instructions; never loop on a permission prompt.
-- The server registers as `oxide-computer-use`, except where a client already ships
+- The server registers as `oxide-reins`, except where a client already ships
   Computer Use: Claude Code reserves `computer-use` as that exact server name, and Codex's
   bundled Computer Use plugin owns it along with `computer_use`, `node_repl`,
   `cua_repl` and `codex_apps`. `install --client claude|codex` defaults to
-  `oxide-computer-use-local`, and `--name` refuses the names those clients already
+  `oxide-reins-local`, and `--name` refuses the names those clients already
   use. The Codex install merges one `[mcp_servers.<name>]` table and never
-  touches `[computer_use]` or `~/.codex/oxide-computer-use/`.
+  touches `[computer_use]` or `~/.codex/computer-use/`.
 - A release is drafted, not written by CI: publishing the release-drafter draft
   creates the tag, and `release.yml` only attaches assets to the release that is
   already there. It fails with that reason instead of creating a release from a
@@ -80,12 +80,12 @@ app's accessibility tree, and the actions that drive it.
 - `cargo test`
 - `cargo clippy --all-targets -- -D warnings`
 - `cargo fmt`
-- `./target/debug/oxide-computer-use tools`
-- `./target/debug/oxide-computer-use doctor`
-- `./target/debug/oxide-computer-use call list_apps`
-- `./target/debug/oxide-computer-use install --client codex --print`
-- `./target/debug/oxide-computer-use apps list`
-- `printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | ./target/debug/oxide-computer-use mcp`
+- `./target/debug/oxide-reins tools`
+- `./target/debug/oxide-reins doctor`
+- `./target/debug/oxide-reins call list_apps`
+- `./target/debug/oxide-reins install --client codex --print`
+- `./target/debug/oxide-reins apps list`
+- `printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | ./target/debug/oxide-reins mcp`
 - `sh -n install.sh && ./scripts/set-version.sh v0.1.0` (the second rewrites `Cargo.toml`; revert it after)
 
 ## Conventions

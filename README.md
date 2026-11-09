@@ -1,8 +1,11 @@
-# oxide-computer-use
+# oxide-reins
 
 Computer Use as a stdio MCP server for any agent on macOS — Oxide, Claude Code,
 Codex CLI, Cursor, Claude Desktop. It lists the running apps, reads an app's
 accessibility tree, and clicks, types, selects, scrolls and drags inside it.
+
+The name: reins steer without letting go. The agent drives the apps, while the
+[app policy](docs/configuration.md) and the permission grants stay in your hands.
 
 The idea matches [open-computer-use](https://github.com/iFurySt/open-computer-use);
 the core implementation is a single Rust binary with
@@ -10,7 +13,7 @@ the core implementation is a single Rust binary with
 an opt-in [native companion app](docs/oxide-helper.md) in its Desktop repository.
 
 ```text
-agent (Oxide / Claude Code / Codex / Cursor) ──stdio JSON-RPC──▶ oxide-computer-use
+agent (Oxide / Claude Code / Codex / Cursor) ──stdio JSON-RPC──▶ oxide-reins
                                                    ├─▶ Accessibility (AX) elements, actions, values
                                                    ├─▶ CoreGraphics pointer, keyboard, scroll
                                                    └─▶ window server + screencapture
@@ -26,14 +29,14 @@ agent (Oxide / Claude Code / Codex / Cursor) ──stdio JSON-RPC──▶ oxide
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/jaysonwu991/oxide-computer-use/main/install.sh | sh
-oxide-computer-use doctor
+curl -fsSL https://raw.githubusercontent.com/jaysonwu991/oxide-reins/main/install.sh | sh
+oxide-reins doctor
 ```
 
 The installer picks the Apple Silicon or Intel archive from the
-[latest release](https://github.com/jaysonwu991/oxide-computer-use/releases), checks
-its SHA-256, and installs `oxide-computer-use` into `~/.local/bin`.
-`OXIDE_COMPUTER_USE_INSTALL_DIR`, `OXIDE_COMPUTER_USE_VERSION` and `OXIDE_COMPUTER_USE_REPO`
+[latest release](https://github.com/jaysonwu991/oxide-reins/releases), checks
+its SHA-256, and installs `oxide-reins` into `~/.local/bin`.
+`OXIDE_REINS_INSTALL_DIR`, `OXIDE_REINS_VERSION` and `OXIDE_REINS_REPO`
 override where it goes and what it installs. There is no Linux or Windows
 archive: the tools drive macOS APIs, so another platform builds to explicit
 "not implemented" errors — see [docs/install.md](docs/install.md).
@@ -42,24 +45,24 @@ archive: the tools drive macOS APIs, so another platform builds to explicit
 
 ```sh
 cargo build --release
-install -m 755 target/release/oxide-computer-use ~/.local/bin/oxide-computer-use
+install -m 755 target/release/oxide-reins ~/.local/bin/oxide-reins
 ```
 
 ## Connect a client
 
 ```sh
-oxide-computer-use install --client oxide     # ~/.oxide/mcp.json
-oxide-computer-use install --client claude    # ~/.claude.json
-oxide-computer-use install --client codex     # ~/.codex/config.toml
-oxide-computer-use install --client cursor    # ~/.cursor/mcp.json
-oxide-computer-use install --client desktop   # Claude Desktop
-oxide-computer-use install --print            # the entry, for any other client
+oxide-reins install --client oxide     # ~/.oxide/mcp.json
+oxide-reins install --client claude    # ~/.claude.json
+oxide-reins install --client codex     # ~/.codex/config.toml
+oxide-reins install --client cursor    # ~/.cursor/mcp.json
+oxide-reins install --client desktop   # Claude Desktop
+oxide-reins install --print            # the entry, for any other client
 ```
 
-It registers as `oxide-computer-use`, except for the clients that already ship their
+It registers as `oxide-reins`, except for the clients that already ship their
 own Computer Use: Claude Code reserves `computer-use` as that name and skips a server registered
 under it, and Codex's bundled Computer Use plugin owns it, so `--client claude`
-and `--client codex` use `oxide-computer-use-local` and sit beside the built-in rather
+and `--client codex` use `oxide-reins-local` and sit beside the built-in rather
 than over it. `--name` picks another name where a client has none reserved.
 Details and the equivalent per-client commands are in
 [docs/clients.md](docs/clients.md).
@@ -67,10 +70,10 @@ Details and the equivalent per-client commands are in
 ## Check permissions and policy
 
 ```sh
-oxide-computer-use doctor          # permissions, app policy, versions
-oxide-computer-use doctor --prompt # ask macOS to show the permission prompts
-oxide-computer-use apps deny "1Password"
-oxide-computer-use apps list
+oxide-reins doctor          # permissions, app policy, versions
+oxide-reins doctor --prompt # ask macOS to show the permission prompts
+oxide-reins apps deny "1Password"
+oxide-reins apps list
 ```
 
 ## Tools
@@ -99,15 +102,15 @@ being applied to whatever is there now.
 ## Call it without an agent
 
 ```sh
-oxide-computer-use call list_apps
-oxide-computer-use call get_app_state --args '{"app":"TextEdit","window":0}'
-oxide-computer-use call click --args '{"app":"TextEdit","element_index":12}'
+oxide-reins call list_apps
+oxide-reins call get_app_state --args '{"app":"TextEdit","window":0}'
+oxide-reins call click --args '{"app":"TextEdit","element_index":12}'
 ```
 
 A sequence shares one process and one snapshot state:
 
 ```sh
-oxide-computer-use call --calls '[
+oxide-reins call --calls '[
   {"tool":"get_app_state","args":{"app":"TextEdit"}},
   {"tool":"select_text","args":{"app":"TextEdit","element_index":9,"text":"Hello"}},
   {"tool":"press_key","args":{"app":"TextEdit","key":"c","modifiers":"cmd"}}

@@ -42,7 +42,7 @@ pub fn guidance() -> String {
     format!(
         "In System Settings → Privacy & Security, grant Accessibility to {host} to read and drive apps, \
          and Screen Recording to capture screenshots. If the app is absent, use + to add it. \
-         The entry may be the hosting app rather than `oxide-computer-use`. Quit and reopen that app after \
+         The entry may be the hosting app rather than `oxide-reins`. Quit and reopen that app after \
          changing Screen Recording. Run `permissions` through this same MCP connection to recheck; \
          a different terminal can have different permissions. Only the user can approve these grants."
     )
@@ -68,6 +68,6 @@ mod tests {
             Some("/Applications/Oxide.app".into())
         );
         assert_eq!(app_bundle("/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper.app/Contents/MacOS/Code Helper"), Some("/Applications/Visual Studio Code.app".into()));
-        assert_eq!(app_bundle("/Users/me/.local/bin/oxide-computer-use"), None);
+        assert_eq!(app_bundle("/Users/me/.local/bin/oxide-reins"), None);
     }
 }

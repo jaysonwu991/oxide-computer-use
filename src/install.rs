@@ -115,8 +115,8 @@ fn toml_string(text: &str) -> String {
 /// owns it, so both clients get a suffixed name by default.
 pub fn default_name(client: Client) -> &'static str {
     match client {
-        Client::Claude | Client::Codex => "oxide-computer-use-local",
-        _ => "oxide-computer-use",
+        Client::Claude | Client::Codex => "oxide-reins-local",
+        _ => "oxide-reins",
     }
 }
 
@@ -278,7 +278,7 @@ fn write_atomically(path: &Path, contents: &str) -> Result<()> {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("creating {}", parent.display()))?;
     }
-    let temporary = path.with_extension("oxide-computer-use-tmp");
+    let temporary = path.with_extension("oxide-reins-tmp");
     std::fs::write(&temporary, contents)
         .with_context(|| format!("writing {}", temporary.display()))?;
     std::fs::rename(&temporary, path).with_context(|| format!("replacing {}", path.display()))?;
@@ -301,9 +301,9 @@ mod tests {
     fn reserved_and_odd_names_are_rejected() {
         assert!(validate_name(Client::Claude, "computer-use").is_err());
         assert!(validate_name(Client::Oxide, "computer-use").is_ok());
-        assert!(validate_name(Client::Claude, "oxide-computer-use-local").is_ok());
+        assert!(validate_name(Client::Claude, "oxide-reins-local").is_ok());
         assert!(validate_name(Client::Oxide, "my server").is_err());
-        assert!(validate_name(Client::Oxide, "oxide-computer-use").is_ok());
+        assert!(validate_name(Client::Oxide, "oxide-reins").is_ok());
     }
 
     #[test]
@@ -314,23 +314,23 @@ mod tests {
                 "`{name}` would shadow a server Codex ships"
             );
         }
-        assert!(validate_name(Client::Codex, "oxide-computer-use-local").is_ok());
-        assert!(validate_name(Client::Cursor, "oxide-computer-use").is_ok());
+        assert!(validate_name(Client::Codex, "oxide-reins-local").is_ok());
+        assert!(validate_name(Client::Cursor, "oxide-reins").is_ok());
     }
 
     #[test]
     fn a_client_that_ships_computer_use_gets_a_name_it_does_not_reserve() {
-        assert_eq!(default_name(Client::Oxide), "oxide-computer-use");
-        assert_eq!(default_name(Client::Cursor), "oxide-computer-use");
-        assert_eq!(default_name(Client::Codex), "oxide-computer-use-local");
-        assert_eq!(default_name(Client::Claude), "oxide-computer-use-local");
+        assert_eq!(default_name(Client::Oxide), "oxide-reins");
+        assert_eq!(default_name(Client::Cursor), "oxide-reins");
+        assert_eq!(default_name(Client::Codex), "oxide-reins-local");
+        assert_eq!(default_name(Client::Claude), "oxide-reins-local");
     }
 
     #[test]
     fn a_toml_snippet_uses_the_codex_table_shape() {
-        let text = snippet(Client::Codex, Path::new("/bin/oxide-computer-use"), "cu");
+        let text = snippet(Client::Codex, Path::new("/bin/oxide-reins"), "cu");
         assert!(text.contains("[mcp_servers.cu]"));
-        assert!(text.contains("command = \"/bin/oxide-computer-use\""));
+        assert!(text.contains("command = \"/bin/oxide-reins\""));
         assert!(text.contains("args = [\"mcp\"]"));
     }
 

@@ -63,12 +63,12 @@ jobs:
       - name: Package
         run: |
           set -euo pipefail
-          asset="oxide-computer-use-${{ matrix.platform }}.tar.gz"
+          asset="oxide-reins-${{ matrix.platform }}.tar.gz"
           staged="$(mktemp -d)"
-          cp "target/${{ matrix.target }}/release/oxide-computer-use" "${staged}/oxide-computer-use"
+          cp "target/${{ matrix.target }}/release/oxide-reins" "${staged}/oxide-reins"
           (
             cd "${staged}"
-            tar -czf "${asset}" oxide-computer-use
+            tar -czf "${asset}" oxide-reins
             if command -v sha256sum >/dev/null 2>&1; then
               sha256sum "${asset}" > "${asset}.sha256"
             else
@@ -80,8 +80,8 @@ jobs:
         with:
           name: asset-${{ matrix.platform }}
           path: |
-            oxide-computer-use-*.tar.gz
-            oxide-computer-use-*.tar.gz.sha256
+            oxide-reins-*.tar.gz
+            oxide-reins-*.tar.gz.sha256
           if-no-files-found: error
 
   attach:
@@ -105,10 +105,10 @@ jobs:
             # One key per platform: the token `install.sh` asks for, and the
             # name of the archive it carries for it.
             for platform in macos-arm64 macos-x64; do
-              printf '%s: oxide-computer-use-%s.tar.gz\n' "${platform}" "${platform}"
+              printf '%s: oxide-reins-%s.tar.gz\n' "${platform}" "${platform}"
             done
-          } > assets/oxide-computer-use-manifest
-          cat assets/oxide-computer-use-manifest
+          } > assets/oxide-reins-manifest
+          cat assets/oxide-reins-manifest
       # The drafter's draft is the release. Publishing it creates the tag this
       # workflow runs on, so by now the release exists; a tag pushed by hand has
       # no draft behind it, and creating one here would ship notes nobody
