@@ -158,7 +158,7 @@ template: |
   curl -fsSL https://raw.githubusercontent.com/$OWNER/$REPOSITORY/main/install.sh | sh
   ```
 
-  The installer reads `oxide-computer-use-manifest` from this release, verifies the
+  The installer reads `oxide-reins-manifest` from this release, verifies the
   archive's SHA-256 and puts the binary in `~/.local/bin`. The archives for both
   macOS targets, their `.sha256` files, the manifest and `install.sh` itself are
   attached below a few minutes after this release is published.

@@ -12,7 +12,7 @@ of this repository's server:
 ```sh
 cd /path/to/oxide
 python3 crates/desktop/computer-use/build.py \
-  --server /absolute/path/oxide-computer-use/target/release/oxide-computer-use \
+  --server /absolute/path/oxide-reins/target/release/oxide-reins \
   --output "$PWD/crates/desktop/artifacts/Oxide Computer Use.app"
 ```
 
@@ -20,24 +20,26 @@ Requires Xcode Command Line Tools. The output must not already exist. The build
 copies the supplied runtime into the app and signs both; default signing is
 ad-hoc for development. `--identity` selects a Developer ID identity, but does
 not notarize or publish an installer. The helper supports macOS 14+; the supplied
-runtime can impose a higher minimum. Other OS/CPU versions need validation.
+runtime can impose a higher minimum. Other OS/CPU versions need validation. The
+app's inner proxy keeps the name Oxide's build script gives it
+(`oxide-computer-use`); that name is not this repository's binary name.
 
 Move the app to its intended stable location, then register its proxy:
 
 ```sh
-oxide mcp add oxide-computer-use "/absolute/path/Oxide Computer Use.app/Contents/MacOS/oxide-computer-use" --mcp
+oxide mcp add oxide-reins "/absolute/path/Oxide Computer Use.app/Contents/MacOS/oxide-computer-use" --mcp
 ```
 
-Review the existing entry before replacing it; use a separate `oxide-computer-use-*`
+Review the existing entry before replacing it; use a separate `oxide-reins-*`
 name for a side-by-side trial. Reconnect the MCP server or restart Oxide. Running
-`oxide-computer-use install --client oxide` afterward registers the standalone runtime
+`oxide-reins install --client oxide` afterward registers the standalone runtime
 again; it does not select the helper.
 
 ## Permissions, activity and cancellation
 
 The proxy launches a new native app instance through LaunchServices, then
 bridges stdio MCP over a private Unix socket. Each connection owns its helper and
-runtime. It preserves `HOME`, `OXIDE_COMPUTER_USE_CONFIG` and cwd so custom app policy
+runtime. It preserves `HOME`, `OXIDE_REINS_CONFIG` and cwd so custom app policy
 is not lost. The native menu-bar cursor identifies a connected session and offers
 permission diagnostics, user-initiated grant prompts, and **Stop computer use and
 quit**. A connection alone is not evidence that an action is running.

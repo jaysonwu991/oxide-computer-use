@@ -1,7 +1,7 @@
 # Tool reference
 
 Every tool is available as an MCP tool (`tools/list`, `tools/call`) and through
-the CLI (`oxide-computer-use call <tool> --args '<json>'`). The schemas are defined
+the CLI (`oxide-reins call <tool> --args '<json>'`). The schemas are defined
 once in `src/tools.rs`; this page explains what each one does with them.
 
 ## Conventions that apply to every tool
@@ -35,8 +35,8 @@ app's accessibility tree. The number on the left of each line is the
 `element_index` that `click`, `perform_secondary_action`, `set_value`,
 `select_text`, `type_text`, `scroll` and `drag` take.
 
-- Indexes belong to the newest snapshot **of that process**. `oxide-computer-use mcp`
-  keeps one snapshot for the life of the connection; `oxide-computer-use call` can run
+- Indexes belong to the newest snapshot **of that process**. `oxide-reins mcp`
+  keeps one snapshot for the life of the connection; `oxide-reins call` can run
   a whole sequence in one process with `--calls` (`--calls-file` too).
 - Each index is bound to the `AXWindow` it was captured in. Before acting, the
   server walks up from the element and compares window identity; if the element

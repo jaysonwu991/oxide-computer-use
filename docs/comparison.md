@@ -10,11 +10,11 @@ The Codex-specific statements below were checked against the
 on 2026-11-08. The existing `open-computer-use` issue references describe those
 linked reports, not a fresh verification of every third-party release.
 
-| | oxide-computer-use | open-computer-use | Codex Computer Use |
+| | oxide-reins | open-computer-use | Codex Computer Use |
 | --- | --- | --- | --- |
 | Platforms | macOS only; other builds return an explicit error | macOS, Linux, Windows | macOS and Windows; background operation differs by OS |
 | Distribution | macOS arm64/x64 archives or source build; optional development helper built in the Oxide repo | npm package, app bundle, onboarding app | part of Codex |
-| MCP client setup | `install --client oxide\|claude\|codex\|cursor\|desktop`, or `--print` | documented config snippets, `install-codex-mcp` | built in; this server registers beside it as `oxide-computer-use-local` |
+| MCP client setup | `install --client oxide\|claude\|codex\|cursor\|desktop`, or `--print` | documented config snippets, `install-codex-mcp` | built in; this server registers beside it as `oxide-reins-local` |
 | Tool surface | 13 tools, including `permissions`, `query` and `screenshot` | 9–10, `select_text` on macOS | product-defined |
 | Observation | accessibility tree, indexes bound to the window they came from | accessibility tree; screenshot embedded in every state by default | screenshots plus accessibility |
 | Value writes | refused unless the element reports `AXValue` settable, then read back | reported success on controls that ignored the write ([#83](https://github.com/iFurySt/open-computer-use/issues/83)) | n/a |

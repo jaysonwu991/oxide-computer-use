@@ -1,14 +1,14 @@
 ---
-name: oxide-computer-use
-description: Drive this Mac's apps through the oxide-computer-use MCP server — list apps, read an accessibility tree, then click, type, select, scroll or drag. Use when a task needs a GUI app the agent cannot reach through files or a CLI.
+name: oxide-reins
+description: Drive this Mac's apps through the oxide-reins MCP server — list apps, read an accessibility tree, then click, type, select, scroll or drag. Use when a task needs a GUI app the agent cannot reach through files or a CLI.
 ---
 
 # Computer Use
 
-The `oxide-computer-use` MCP server exposes the desktop as tools. Reading is cheap;
+The `oxide-reins` MCP server exposes the desktop as tools. Reading is cheap;
 acting moves the real pointer and keyboard, so look first and act on what you
-saw. `oxide-computer-use install` registers it under `oxide-computer-use`, or
-`oxide-computer-use-local` for Claude Code and Codex, which already ship their own
+saw. `oxide-reins install` registers it under `oxide-reins`, or
+`oxide-reins-local` for Claude Code and Codex, which already ship their own
 Computer Use under the plain `computer-use` name; the tool names are identical either way.
 
 ## Loop
@@ -54,7 +54,7 @@ Computer Use under the plain `computer-use` name; the tool names are identical e
 ## Failures worth reading
 
 - `` `X` is on the deny list `` or `` not on the allow list `` — the local app
-  policy. `oxide-computer-use apps allow "X"` changes it; do not work around it.
+  policy. `oxide-reins apps allow "X"` changes it; do not work around it.
 - `Accessibility permission is missing` — the app hosting the server is not
   trusted. Call `permissions` in this MCP connection and ask the user to approve the reported host in System
   Settings → Privacy & Security → Accessibility, then restart the host. Do not approve permissions yourself.

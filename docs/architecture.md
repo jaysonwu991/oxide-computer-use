@@ -84,9 +84,9 @@ The `Runtime` keeps a `Vec<Cached>` of retained elements plus the app name they
 came from. `get_app_state` and `query` replace it; actions read it. Because it is
 in-memory state, it lives exactly as long as the process:
 
-- `oxide-computer-use mcp` — one snapshot for the whole connection, so an agent can read
+- `oxide-reins mcp` — one snapshot for the whole connection, so an agent can read
   once and act several times.
-- `oxide-computer-use call ...` — one process per command; a sequence in `--calls`
+- `oxide-reins call ...` — one process per command; a sequence in `--calls`
   shares one `Runtime`, which is why a read followed by an action works there.
 - Two agents in two processes never share or corrupt each other's indexes.
 

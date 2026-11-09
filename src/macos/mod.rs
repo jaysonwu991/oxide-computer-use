@@ -1,4 +1,4 @@
-//! macOS oxide-computer-use backend: accessibility snapshots plus synthetic input.
+//! macOS oxide-reins backend: accessibility snapshots plus synthetic input.
 
 pub mod apps;
 pub mod ax;
