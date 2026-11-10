@@ -414,6 +414,80 @@ fn tools_json_prints_the_surface_an_agent_searches() {
 }
 
 #[test]
+fn a_subscribed_client_hears_that_the_screen_may_have_changed() {
+    let mut child = Command::new(binary())
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("the MCP server starts");
+    let mut stdin = child.stdin.take().expect("stdin");
+    for request in [
+        json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}}),
+        json!({"jsonrpc": "2.0", "id": 2, "method": "resources/list"}),
+        json!({"jsonrpc": "2.0", "id": 3, "method": "resources/subscribe", "params": {"uri": "computer-use://screen"}}),
+        json!({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "permissions", "arguments": {}}}),
+        json!({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "click", "arguments": {"app": "TextEdit", "x": 10, "y": 10}}}),
+    ] {
+        writeln!(stdin, "{request}").unwrap();
+    }
+    drop(stdin);
+    let output = child.wait_with_output().expect("the server exits");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let packets: Vec<Value> = stdout
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("each line is one JSON packet"))
+        .collect();
+
+    let resources = packets
+        .iter()
+        .find(|packet| packet["id"] == json!(2))
+        .expect("resources/list is answered");
+    assert_eq!(
+        resources["result"]["resources"][0]["uri"],
+        json!("computer-use://screen")
+    );
+
+    let updates: Vec<&Value> = packets
+        .iter()
+        .filter(|packet| packet["method"] == json!("notifications/resources/updated"))
+        .collect();
+    assert_eq!(
+        updates.len(),
+        2,
+        "subscribing reports the first view, and only the action reports another: {stdout}"
+    );
+    assert_eq!(updates[0]["params"]["uri"], json!("computer-use://screen"));
+    assert!(
+        updates[0].get("id").is_none(),
+        "a notification carries no id: {stdout}"
+    );
+
+    let permissions = packets
+        .iter()
+        .position(|packet| packet["id"] == json!(4))
+        .expect("permissions is answered");
+    let action = packets
+        .iter()
+        .position(|packet| packet["id"] == json!(5))
+        .expect("the action is answered");
+    let reported = packets
+        .iter()
+        .rposition(|packet| packet["method"] == json!("notifications/resources/updated"))
+        .expect("the action reported a change");
+    assert!(
+        permissions < reported && action < reported,
+        "reading permissions reports nothing, and the action's notification follows it: {stdout}"
+    );
+    assert_eq!(
+        reported,
+        packets.len() - 1,
+        "the answer comes before its notification: {stdout}"
+    );
+}
+
+#[test]
 fn a_key_spelling_is_checked_before_a_permission_is_asked_for() {
     let (stdout, _, ok) = run(&["call", "press_key", "--args", "{\"key\":\"f13\"}"]);
     assert!(!ok, "a key that does not exist is refused");
@@ -428,6 +502,49 @@ fn a_key_spelling_is_checked_before_a_permission_is_asked_for() {
     let (stdout, _, _) = run(&["call", "press_key", "--args", "{\"key\":\"\\\\n\"}"]);
     assert!(!stdout.contains("unknown key"), "{stdout}");
     assert!(stdout.contains("Accessibility"), "{stdout}");
+}
+
+#[test]
+fn background_input_without_an_app_is_refused_before_a_permission() {
+    let (stdout, _, ok) = run(&[
+        "call",
+        "type_text",
+        "--args",
+        "{\"text\":\"hi\",\"background\":true}",
+    ]);
+    assert!(!ok);
+    assert!(stdout.contains("`background` needs `app`"), "{stdout}");
+    assert!(!stdout.contains("Accessibility"), "{stdout}");
+}
+
+#[test]
+fn the_self_automation_rule_round_trips_through_the_cli() {
+    let home = temporary_home("self-automation");
+    let (stdout, _, ok) = run_with_home(&home, &["apps", "list"]);
+    assert!(ok, "{stdout}");
+    assert!(
+        stdout.contains("Self-automation: refused for the app hosting this server"),
+        "{stdout}"
+    );
+
+    let (stdout, _, ok) = run_with_home(&home, &["apps", "self-automation", "allow"]);
+    assert!(ok, "{stdout}");
+    assert_eq!(config_of(&home)["self_automation"], json!("allow"));
+    assert!(stdout.contains("hosting app is reachable"), "{stdout}");
+
+    let (_, stderr, ok) = run_with_home(&home, &["apps", "self-automation", "sometimes"]);
+    assert!(!ok);
+    assert!(stderr.contains("allow"), "{stderr}");
+
+    let (_, _, ok) = run_with_home(&home, &["apps", "reset"]);
+    assert!(ok);
+    assert!(config_of(&home).get("self_automation").is_none());
+
+    let (stdout, _, _) = run_with_home(&home, &["doctor", "--json"]);
+    let status: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(status["self_automation"], json!("deny"));
+
+    std::fs::remove_dir_all(&home).ok();
 }
 
 #[test]

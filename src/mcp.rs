@@ -3,6 +3,8 @@
 use std::io::{BufRead, Write};
 
 use anyhow::{Context, Result};
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine;
 use serde_json::{json, Value};
 
 use crate::runtime::Runtime;
@@ -15,6 +17,13 @@ pub const PROTOCOL_VERSION: &str = "2025-06-18";
 /// not ask for.
 pub const SUPPORTED_VERSIONS: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
+/// The one resource this server publishes: a fresh capture of the screen. A
+/// subscribing client is told when a call may have changed it, which is the
+/// stdio equivalent of a preview that keeps up.
+pub const SCREEN_URI: &str = "computer-use://screen";
+
+pub const INSTRUCTIONS: &str = "Use this server for GUI control of macOS desktop apps and signed-in browser tasks, including filling forms and reading a screen. Tools: permissions, list_apps, get_app_state, query, click, perform_secondary_action, set_value, select_text, type_text, press_key, scroll, drag, screenshot. Call permissions for setup diagnostics in the actual MCP host, list_apps to find the target, then get_app_state before acting on indexes from its newest snapshot. Re-observe after actions and use screenshot or include_screenshot for visual verification and client previews; read the computer-use://screen resource for a fresh capture at any time, and subscribe to it to be told when a call may have changed the screen. press_key takes Return, Tab, Escape, the arrows and F1-F12; a newline inside type_text is pressed as Return, and a literal backslash-n is not a navigation key. type_text and press_key with background true deliver to one app without activating it. The app policy decides which apps are reachable: an unapproved app is refused with the exact `oxide-reins apps grant-once or apps allow` command, `apps revoke` withdraws a decision while this session keeps running, and the app hosting this server is refused unless `apps self-automation allow` says otherwise. A person moving the pointer or typing during a drag or a long type stops it: that is user takeover, so leave the desktop to them. Respect requests to leave submission to the user. Never approve OS permission dialogs yourself. If a tool search does not list these tools, the MCP connection is missing rather than the capability.";
+
 fn negotiated_version(requested: Option<&str>) -> String {
     match requested {
         Some(version) if SUPPORTED_VERSIONS.contains(&version) => version.to_string(),
@@ -25,7 +34,7 @@ fn negotiated_version(requested: Option<&str>) -> String {
 pub fn serve() -> Result<()> {
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
-    let mut runtime = Runtime::new();
+    let mut server = Server::new();
     for line in stdin.lock().lines() {
         let line = line.context("reading a request from stdin")?;
         if line.trim().is_empty() {
@@ -44,69 +53,188 @@ pub fn serve() -> Result<()> {
                 continue;
             }
         };
-        let Some(response) = handle(&mut runtime, &request) else {
-            continue;
-        };
-        writeln!(stdout, "{}", serde_json::to_string(&response)?)?;
+        if let Some(response) = server.handle(&request) {
+            writeln!(stdout, "{}", serde_json::to_string(&response)?)?;
+        }
+        for notification in server.drain() {
+            writeln!(stdout, "{}", serde_json::to_string(&notification)?)?;
+        }
         stdout.flush()?;
     }
     Ok(())
 }
 
-fn handle(runtime: &mut Runtime, request: &Value) -> Option<Value> {
-    let id = request.get("id").cloned();
-    let method = request
-        .get("method")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
-    let id = id?;
+pub struct Server {
+    runtime: Runtime,
+    screen_subscribed: bool,
+    pending: Vec<Value>,
+}
 
-    let outcome = match method {
-        "initialize" => Ok(json!({
-            "protocolVersion": negotiated_version(
-                params.get("protocolVersion").and_then(Value::as_str)
-            ),
-            "capabilities": { "tools": { "listChanged": false } },
-            "serverInfo": {
-                "name": "oxide-reins",
-                "version": env!("CARGO_PKG_VERSION")
-            },
-            "instructions": "Use this server for GUI control of macOS desktop apps and signed-in browser tasks, including filling forms and reading a screen. Tools: permissions, list_apps, get_app_state, query, click, perform_secondary_action, set_value, select_text, type_text, press_key, scroll, drag, screenshot. Call permissions for setup diagnostics in the actual MCP host, list_apps to find the target, then get_app_state before acting on indexes from its newest snapshot. Re-observe after actions and use screenshot or include_screenshot for visual verification and client previews. Screenshots are snapshots, not a live stream. press_key takes Return, Tab, Escape, the arrows and F1-F12; a newline inside type_text is pressed as Return, and a literal backslash-n is not a navigation key. The app policy decides which apps are reachable: an unapproved app is refused with the exact `oxide-reins apps grant-once or apps allow` command, and `apps revoke` withdraws a decision while this session keeps running. A person moving the pointer or typing during a drag or a long type stops it: that is user takeover, so leave the desktop to them. Respect requests to leave submission to the user. AXPress and set_value can work in the background; keyboard and pointer input activate the app and use the real desktop. Never approve OS permission dialogs yourself. If a tool search does not list these tools, the MCP connection is missing rather than the capability."
-        })),
-        "ping" => Ok(json!({})),
-        "tools/list" => Ok(json!({ "tools": tools::specs() })),
-        "tools/call" => Ok(call_tool(runtime, &params)),
-        other => Err(json!({ "code": -32601, "message": format!("method not found: {other}") })),
-    };
+impl Default for Server {
+    fn default() -> Self {
+        Server::new()
+    }
+}
 
-    Some(match outcome {
-        Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
-        Err(error) => json!({ "jsonrpc": "2.0", "id": id, "error": error }),
+impl Server {
+    pub fn new() -> Server {
+        Server {
+            runtime: Runtime::new(),
+            screen_subscribed: false,
+            pending: Vec::new(),
+        }
+    }
+
+    /// Notifications produced while answering the last request. The caller writes
+    /// them after the response, which is the order a client expects.
+    pub fn drain(&mut self) -> Vec<Value> {
+        std::mem::take(&mut self.pending)
+    }
+
+    pub fn handle(&mut self, request: &Value) -> Option<Value> {
+        let id = request.get("id").cloned()?;
+        let method = request
+            .get("method")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
+
+        let outcome = match method {
+            "initialize" => Ok(json!({
+                "protocolVersion": negotiated_version(
+                    params.get("protocolVersion").and_then(Value::as_str)
+                ),
+                "capabilities": {
+                    "tools": { "listChanged": false },
+                    "resources": { "subscribe": true, "listChanged": false }
+                },
+                "serverInfo": {
+                    "name": "oxide-reins",
+                    "version": env!("CARGO_PKG_VERSION")
+                },
+                "instructions": INSTRUCTIONS
+            })),
+            "ping" => Ok(json!({})),
+            "tools/list" => Ok(json!({ "tools": tools::specs() })),
+            "tools/call" => Ok(self.call_tool(&params)),
+            "resources/list" => Ok(json!({
+                "resources": [{
+                    "uri": SCREEN_URI,
+                    "name": "Screen",
+                    "description": "A fresh capture of the screen as a PNG. Read it for a current view; subscribe to be told when a call may have changed what is on screen.",
+                    "mimeType": "image/png"
+                }]
+            })),
+            "resources/subscribe" => self.subscribe(&params, true),
+            "resources/unsubscribe" => self.subscribe(&params, false),
+            "resources/read" => self.read_resource(&params),
+            other => {
+                Err(json!({ "code": -32601, "message": format!("method not found: {other}") }))
+            }
+        };
+
+        Some(match outcome {
+            Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
+            Err(error) => json!({ "jsonrpc": "2.0", "id": id, "error": error }),
+        })
+    }
+
+    fn call_tool(&mut self, params: &Value) -> Value {
+        let name = match params.get("name").and_then(Value::as_str) {
+            Some(name) => name,
+            None => {
+                return json!({
+                    "content": [{ "type": "text", "text": "`name` is required for tools/call" }],
+                    "isError": true
+                })
+            }
+        };
+        let args = params
+            .get("arguments")
+            .cloned()
+            .unwrap_or_else(|| json!({}));
+        let result = tools::execute(&mut self.runtime, name, &args);
+        // A failed action may still have moved something, so the subscription
+        // follows the attempt, not the outcome.
+        let touched = match &result {
+            Ok(outcome) => !outcome.images.is_empty() || !tools::is_read_only(name),
+            Err(_) => !tools::is_read_only(name),
+        };
+        if touched {
+            self.notify_screen();
+        }
+        match result {
+            Ok(outcome) => tools::content_json(&outcome),
+            Err(error) => json!({
+                "content": [{ "type": "text", "text": format!("{error:#}") }],
+                "isError": true
+            }),
+        }
+    }
+
+    fn notify_screen(&mut self) {
+        if !self.screen_subscribed {
+            return;
+        }
+        self.pending.push(json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/resources/updated",
+            "params": { "uri": SCREEN_URI }
+        }));
+    }
+
+    fn subscribe(&mut self, params: &Value, subscribed: bool) -> std::result::Result<Value, Value> {
+        let uri = params
+            .get("uri")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if uri != SCREEN_URI {
+            return Err(unknown_resource(uri));
+        }
+        self.screen_subscribed = subscribed;
+        if subscribed {
+            self.notify_screen();
+        }
+        Ok(json!({}))
+    }
+
+    fn read_resource(&mut self, params: &Value) -> std::result::Result<Value, Value> {
+        let uri = params
+            .get("uri")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if uri != SCREEN_URI {
+            return Err(unknown_resource(uri));
+        }
+        match tools::execute(&mut self.runtime, "screenshot", &json!({})) {
+            Ok(outcome) => Ok(json!({ "contents": contents(outcome) })),
+            Err(error) => Err(json!({
+                "code": -32603,
+                "message": format!("{error:#}")
+            })),
+        }
+    }
+}
+
+fn unknown_resource(uri: &str) -> Value {
+    json!({
+        "code": -32602,
+        "message": format!("no resource `{uri}`; the only one this server publishes is {SCREEN_URI}")
     })
 }
 
-fn call_tool(runtime: &mut Runtime, params: &Value) -> Value {
-    let name = match params.get("name").and_then(Value::as_str) {
-        Some(name) => name,
-        None => {
-            return json!({
-                "content": [{ "type": "text", "text": "`name` is required for tools/call" }],
-                "isError": true
+fn contents(outcome: tools::Outcome) -> Vec<Value> {
+    outcome
+        .images
+        .into_iter()
+        .map(|bytes| {
+            json!({
+                "uri": SCREEN_URI,
+                "mimeType": "image/png",
+                "blob": BASE64.encode(bytes)
             })
-        }
-    };
-    let args = params
-        .get("arguments")
-        .cloned()
-        .unwrap_or_else(|| json!({}));
-    match tools::execute(runtime, name, &args) {
-        Ok(outcome) => tools::content_json(&outcome),
-        Err(error) => json!({
-            "content": [{ "type": "text", "text": format!("{error:#}") }],
-            "isError": true
-        }),
-    }
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -114,8 +242,19 @@ mod tests {
     use super::*;
 
     fn request(value: Value) -> Option<Value> {
-        let mut runtime = Runtime::new();
-        handle(&mut runtime, &value)
+        Server::new().handle(&value)
+    }
+
+    fn subscribe(server: &mut Server) {
+        let response = server
+            .handle(&json!({
+                "jsonrpc": "2.0",
+                "id": 9,
+                "method": "resources/subscribe",
+                "params": { "uri": SCREEN_URI }
+            }))
+            .expect("subscribe is answered");
+        assert!(response.get("error").is_none(), "{response}");
     }
 
     #[test]
@@ -138,6 +277,109 @@ mod tests {
             json!("oxide-reins")
         );
         assert!(response["result"]["capabilities"]["tools"].is_object());
+        assert_eq!(
+            response["result"]["capabilities"]["resources"]["subscribe"],
+            json!(true)
+        );
+    }
+
+    #[test]
+    fn the_screen_resource_is_listed_and_readable_by_uri() {
+        let response = request(json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "resources/list",
+            "params": {}
+        }))
+        .expect("resources/list is answered");
+        let resources = response["result"]["resources"]
+            .as_array()
+            .expect("resources is an array");
+        assert_eq!(resources.len(), 1);
+        assert_eq!(resources[0]["uri"], json!(SCREEN_URI));
+        assert_eq!(resources[0]["mimeType"], json!("image/png"));
+
+        let response = request(json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "resources/read",
+            "params": { "uri": "computer-use://no-such-screen" }
+        }))
+        .expect("an unknown resource is still answered");
+        assert_eq!(response["error"]["code"], json!(-32602));
+        let message = response["error"]["message"].as_str().unwrap_or_default();
+        assert!(message.contains(SCREEN_URI), "{message}");
+    }
+
+    #[test]
+    fn a_capture_becomes_a_png_block_a_client_can_render() {
+        let blank = contents(tools::Outcome {
+            text: "Captured a screenshot.".to_string(),
+            images: vec![b"png".to_vec()],
+        });
+        assert_eq!(blank.len(), 1);
+        assert_eq!(blank[0]["uri"], json!(SCREEN_URI));
+        assert_eq!(blank[0]["mimeType"], json!("image/png"));
+        assert_eq!(blank[0]["blob"], json!("cG5n"));
+    }
+
+    #[test]
+    fn a_subscribed_client_is_told_when_a_call_may_have_changed_the_screen() {
+        let mut server = Server::new();
+        subscribe(&mut server);
+        assert_eq!(
+            server.drain().len(),
+            1,
+            "subscribing reports the first view"
+        );
+
+        server.handle(&json!({
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": { "name": "permissions", "arguments": {} }
+        }));
+        assert!(
+            server.drain().is_empty(),
+            "reading permissions changes nothing on screen"
+        );
+
+        server.handle(&json!({
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "tools/call",
+            "params": { "name": "click", "arguments": { "app": "TextEdit", "x": 10, "y": 10 } }
+        }));
+        let notifications = server.drain();
+        assert_eq!(notifications.len(), 1, "{notifications:?}");
+        assert_eq!(
+            notifications[0]["method"],
+            json!("notifications/resources/updated")
+        );
+        assert_eq!(notifications[0]["params"]["uri"], json!(SCREEN_URI));
+    }
+
+    #[test]
+    fn unsubscribing_stops_the_notifications() {
+        let mut server = Server::new();
+        subscribe(&mut server);
+        server.drain();
+        let response = server
+            .handle(&json!({
+                "jsonrpc": "2.0",
+                "id": 10,
+                "method": "resources/unsubscribe",
+                "params": { "uri": SCREEN_URI }
+            }))
+            .expect("unsubscribe is answered");
+        assert!(response.get("error").is_none(), "{response}");
+        server.handle(&json!({
+            "jsonrpc": "2.0",
+            "id": 11,
+            "method": "tools/call",
+            "params": { "name": "click", "arguments": { "app": "TextEdit", "x": 10, "y": 10 } }
+        }));
+        assert!(server.drain().is_empty());
     }
 
     #[test]

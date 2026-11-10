@@ -41,7 +41,7 @@ design; "mitigated" means the failure is possible but reported accurately;
 | [#36](https://github.com/iFurySt/open-computer-use/issues/36) fixed 160-character truncation | Mitigated: `text_limit` per call, `"max"` for full values, and truncated values carry their true length. |
 | [#15](https://github.com/iFurySt/open-computer-use/issues/15) prompt before touching an app | Mitigated: the client's own approval prompt, plus a per-app policy enforced inside the server before any accessibility call. `apps policy deny` makes approval the default, `apps grant-once` approves one call, and an approval is pinned to the bundle identity it was given for. macOS has no OS-level per-app prompt, so this policy is the per-app control. |
 | [#12](https://github.com/iFurySt/open-computer-use/issues/12) configurable allow list | Implemented: `apps allow`, `apps deny`, `apps revoke`, `apps grant-once`, `apps policy`, `apps reset`, `apps list`, stored in `~/.config/oxide-reins/config.json` and re-read on every call; a deny rule wins over an allow list, and an unreadable file refuses every app. |
-| [#39](https://github.com/iFurySt/open-computer-use/issues/39) auditing and visual feedback | Partly. Every action reply names the path it took (AX action versus pointer event), and `include_screenshot` attaches what the agent just read. There is no audit log and no post-action screenshot — **open**. |
+| [#39](https://github.com/iFurySt/open-computer-use/issues/39) auditing and visual feedback | Partly. Every action reply names the path it took (AX action versus pointer event), and `include_screenshot` attaches what the agent just read. A client that subscribes to `computer-use://screen` is told after every call that could have changed the screen, so it can show what changed without asking the agent for an image. There is no audit log and no image taken automatically — **open**. |
 | [#11](https://github.com/iFurySt/open-computer-use/issues/11), [#18](https://github.com/iFurySt/open-computer-use/issues/18) macOS permission confusion, CLI `click` errors | Mitigated by messages: `doctor` reports both permissions and the app policy, a missing permission names the Settings pane, and an out-of-range or wrong-app index says which snapshot it belongs to. |
 | [#60](https://github.com/iFurySt/open-computer-use/issues/60), [#14](https://github.com/iFurySt/open-computer-use/issues/14), [#55](https://github.com/iFurySt/open-computer-use/issues/55) platform and product requests | Out of scope for a macOS-only server. |
 
@@ -52,7 +52,10 @@ so these paths compile and are unit-tested but were not exercised against a live
 app: window binding and the `window` selector, `set_value`'s settability check
 and read-back, `select_text`, the paced drag, `AXPress` versus pointer clicks,
 `include_screenshot`'s window match, a live bundle identity from a running app,
-and the takeover tap, which cannot even be installed without the grant. The
+the takeover tap (which cannot even be installed without the grant),
+`background: true` delivery through `CGEventPostToPid` (whether a given app
+accepts it), the screen resource's capture, and refusing the hosting bundle against
+a real `.app` host. The
 config, protocol, policy decisions (including a decision written by another
 process reaching a running one), protocol negotiation and UTF-8 paths were
 verified end to end, and `list_apps` ran against the real window server.

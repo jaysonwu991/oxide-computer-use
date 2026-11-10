@@ -27,24 +27,33 @@ overlay.*
   instead of fighting the pointer. Without the Accessibility grant the tap cannot
   be installed; the gesture then runs unarbitrated, which the tool reference
   states.
-- **Still absent:** isolated background keyboard input. `CGEventPostToPid` is the
-  obvious next step — it delivers key events to one process without activating it
-  — but it changes typing semantics per app and cannot be verified without the
-  grant, so it is not implemented here. `set_value` and `AXPress` remain the
-  background paths.
-- **Client side:** the system-wide activity overlay is a window, not a runtime
-  concern.
+- **Background keyboard input: implemented here.** `type_text` and `press_key`
+  take `background`, which posts the same events to one process with
+  `CGEventPostToPid` instead of the HID tap, so the app is not activated and the
+  person keeps their focus. The reply names the delivery path and asks for
+  verification, because an app that routes keys through its own window or focus
+  state can ignore input delivered this way. Pointer input has no background
+  path: a click is a click on the desktop.
+- **Still absent:** a system-wide cursor overlay, which is a window and therefore
+  the client's; and a verified answer to "which apps honour posted-to-pid keys",
+  which needs a granted machine and a list of apps to test.
 
 ## 2. Preview
 
 *Only tool-returned snapshots; continuous capture/streaming absent.*
 
-- Unchanged: `screenshot` and `include_screenshot` return a PNG with the reply,
-  and every reply states that it is a snapshot.
-- **Absent:** continuous capture. An MCP stdio server answers requests; pushing a
-  stream needs client support for repeated resource updates or sampling, which
-  neither Oxide nor this server implements. A client that wants a live view has
-  to poll `screenshot`, and the reply shape already says so.
+- **Implemented here:** the `computer-use://screen` MCP resource. `resources/read`
+  captures on demand and returns a PNG block, so a client can render a current
+  view without spending a tool call, and `resources/subscribe` gets
+  `notifications/resources/updated` after every call that could have changed the
+  screen — any action tool, and reads that returned an image. A client that
+  subscribes therefore knows when re-reading is worth it instead of guessing.
+- **Absent:** frames pushed without a client request. A stdio server answers; it
+  cannot start a conversation, and a timer that emits captures nobody asked for
+  would be a stream the client never reads. The cadence of a "live" preview is
+  the client's choice — read as often as the pane is visible.
+- Tool-returned snapshots are unchanged: `screenshot` and `include_screenshot`
+  still put a PNG in the reply, which is what a transcript keeps.
 
 ## 3. Approvals and settings
 
@@ -71,9 +80,15 @@ policy enforcement.*
   decision made in a terminal reaches a running `mcp` server. A policy file that
   does not parse refuses every app rather than falling back to "unlisted, so
   allowed".
+- **Self-automation: implemented here.** The bundle that launched the server is
+  refused by default, by bundle path, with `apps self-automation allow` in the
+  refusal. That is narrower than Codex's documented restriction: shells stay
+  reachable unless a shell is the host.
 - **Client side:** the settings UI and Oxide's own tool approvals. A stdio server
   cannot prompt; its half is the refusal message that names the exact command,
-  and it stays a separate gate from the client's.
+  and it stays a separate gate from the client's. Everything above is reachable
+  from a terminal (`apps list`, `apps allow|grant-once|deny|revoke|policy|
+  self-automation`), which is the surface a settings pane would call.
 
 ## 4. Product flows
 
@@ -84,10 +99,14 @@ unlock/display covering/relock, terminal and self-automation policy equivalence.
   accessibility like any other app, and `list_apps`/`get_app_state` are the whole
   surface.
 - **Policy equivalence is partial:** the app policy applies to every window
-  owner, so a terminal or a self-driving client is subject to the same decisions
-  as any other app. There is no separate rule for "the app that is running the
-  agent", and unlocking or covering displays is not attempted at all — this
-  runtime never asks for a password and never hides a screen.
+  owner, so a terminal is subject to the same decisions as any other app, and the
+  hosting app is additionally refused unless self-automation is allowed. Codex is
+  documented as restricting terminal automation more broadly; that is a product
+  decision about which apps may be driven, not a runtime mechanism, and it is
+  expressible here with `apps deny` per terminal or `apps policy deny`.
+- **Absent:** unlocking, covering the display and relocking — this runtime never
+  asks for a password and never hides a screen — and the built-in browser and
+  native `@App` picker, which are client surfaces.
 
 ## 5. Distribution
 
@@ -125,6 +144,9 @@ but was **not** exercised on a granted machine:
 | Permission prompts and System Settings entries | Unverified; the developer machine has neither grant, so `doctor` reports both missing. |
 | A live bundle identity from a running app | Unverified end to end; the pure path/bundle logic and the missing-bundle path are tested. |
 | The takeover tap's callback | Unverified; `CGEventTapCreate` returns null without the grant, and the tests cover only the comparison and the mask. |
+| Background delivery (`CGEventPostToPid`) | Unverified; the argument handling and the reply are tested, but whether a given app accepts posted-to-pid keys needs the grant and a list of apps. |
+| The screen resource | The protocol path is tested end to end (list, read, subscribe, notification); the capture itself needs Screen Recording, so a read here returns the permission error. |
+| Refusing the hosting app | Unverified end to end; the comparison is unit-tested, but a real hosting bundle needs a client that launches the server as a child of an `.app`. |
 | Granted screenshots and synthetic input | Unverified; every path here fails with the permission error on an ungranted machine. |
 | Visual UI QA of any reply | Not done. |
 | Helper-crash recovery and user takeover in the helper | Not covered by this repository. |

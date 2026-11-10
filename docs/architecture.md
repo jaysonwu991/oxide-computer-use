@@ -25,7 +25,7 @@ flowchart TD
 | Module | Responsibility | Unsafe |
 | --- | --- | --- |
 | `src/main.rs` | CLI: `mcp`, `call`, `tools`, `doctor`, `install`, `apps`. Parses arguments, prints MCP-shaped results, sets exit codes. | no |
-| `src/mcp.rs` | stdio transport: read a line, answer one request, flush. Version negotiation and the method table. | no |
+| `src/mcp.rs` | stdio transport: read a line, answer one request, flush. Version negotiation, the method table, and the `computer-use://screen` resource with its subscription notifications. | no |
 | `src/tools.rs` | The single tool list: schemas, annotations, dispatch to `Runtime`, and the `content`/`isError` shape. | no |
 | `src/install.rs` | Writes each client's config: JSON via `serde_json`, Codex's TOML via `toml_edit` (round-trip, comments kept), atomic rename; refuses a name the client already uses. | no |
 | `src/policy.rs` | Per-app approvals: the deny list, the allow list, bundle identities pinned to an approval, one-call approvals, the default policy. Re-reads the file on every call. | no |
@@ -125,6 +125,12 @@ first keystroke, pointer movement or scroll from anyone else releases what is
 held and fails the call with `user takeover`, rather than fighting the pointer.
 Without the Accessibility grant the tap cannot be installed and a gesture runs
 without that arbitration.
+
+`type_text` and `press_key` take `background`, which aims the same events at one
+process with `CGEventPostToPid` instead of the HID tap: the app is not activated
+and the person keeps the keyboard focus. Nothing else about the events changes,
+so an app that ignores posted-to-pid keys ignores them here too — which is why
+the reply names the delivery path and asks for verification.
 
 ## Window binding
 

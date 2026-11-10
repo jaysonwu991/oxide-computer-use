@@ -64,6 +64,9 @@ Computer Use under the plain `computer-use` name; the tool names are identical e
   key. Use `press_key` with `Return` or `Tab`.
 - `user takeover` — a person used the keyboard or pointer during the gesture.
   Leave the desktop to them, and re-read the app before acting again.
+- `is the app hosting this MCP server` — self-automation is refused. Ask the user
+  whether they want the hosting app driven at all; `apps self-automation allow`
+  is their decision, not yours.
 - `Accessibility permission is missing` — the app hosting the server is not
   trusted. Call `permissions` in this MCP connection and ask the user to approve the reported host in System
   Settings → Privacy & Security → Accessibility, then restart the host. Do not approve permissions yourself.

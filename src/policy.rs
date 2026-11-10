@@ -99,6 +99,8 @@ struct Rules {
     denied: Vec<String>,
     identities: BTreeMap<String, Identity>,
     one_time: Option<Grant>,
+    /// `None` means the default: the app hosting this server is refused.
+    self_automation: Option<Fallback>,
 }
 
 impl Rules {
@@ -115,6 +117,10 @@ impl Rules {
             None if self.allowed.is_empty() => Fallback::Allow,
             None => Fallback::Deny,
         }
+    }
+
+    fn self_automation(&self) -> Fallback {
+        self.self_automation.unwrap_or(Fallback::Deny)
     }
 
     fn is_default(&self) -> bool {
@@ -210,6 +216,10 @@ fn rules_from(value: &Value) -> Rules {
         denied: strings(value, "denied_apps"),
         identities,
         one_time,
+        self_automation: value
+            .get("self_automation")
+            .and_then(Value::as_str)
+            .and_then(Fallback::parse),
     }
 }
 
@@ -307,6 +317,10 @@ impl Policy {
             .iter()
             .map(|(app, identity)| (app.clone(), identity.bundle_id.clone()))
             .collect()
+    }
+
+    pub fn self_automation(&self) -> Fallback {
+        self.rules.borrow().self_automation()
     }
 
     pub fn one_time(&self) -> Option<String> {
@@ -462,6 +476,11 @@ impl Policy {
         self.save()
     }
 
+    pub fn set_self_automation(&mut self, fallback: Fallback) -> Result<()> {
+        self.rules.get_mut().self_automation = Some(fallback);
+        self.save()
+    }
+
     pub fn set_fallback(&mut self, fallback: Fallback) -> Result<()> {
         self.rules.get_mut().fallback = Some(fallback);
         self.save()
@@ -492,6 +511,9 @@ impl Policy {
         if let Some(fallback) = rules.fallback {
             value["app_policy"] = json!(fallback.name());
         }
+        if let Some(fallback) = rules.self_automation {
+            value["self_automation"] = json!(fallback.name());
+        }
         if let Some(grant) = &rules.one_time {
             let mut entry = json!({ "app": grant.app });
             if let Some(identity) = &grant.identity {
@@ -520,8 +542,16 @@ impl Policy {
 
     fn describe_rules(&self) -> String {
         let rules = self.rules.borrow();
+        let automation = match rules.self_automation() {
+            Fallback::Deny => {
+                "\nSelf-automation: refused for the app hosting this server (`apps self-automation allow` changes it)."
+            }
+            Fallback::Allow => "\nSelf-automation: the hosting app is reachable too.",
+        };
         if rules.is_default() {
-            return "No app policy: every app with Accessibility access is reachable.".to_string();
+            return format!(
+                "No app policy: every app with Accessibility access is reachable.{automation}"
+            );
         }
         let mut out = match rules.fallback() {
             Fallback::Allow => {
@@ -551,6 +581,7 @@ impl Policy {
         if !rules.denied.is_empty() {
             out.push_str(&format!("\nDenied: {}", describe(&rules.denied)));
         }
+        out.push_str(automation);
         if let Some(grant) = &rules.one_time {
             out.push_str(&format!(
                 "\nOne-time approval: {} ({})",

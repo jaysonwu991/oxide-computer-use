@@ -87,10 +87,18 @@ unlock/relock behavior.
 
 What the server now provides to the helper is the approval half of that model:
 per-app approvals pinned to a bundle identity, a one-call approval, a default
-policy, and `apps revoke`, all re-read on every call so a decision made while a
-helper session runs takes effect without reconnecting
-([configuration](configuration.md#app-policy)). The helper has no settings UI for
-it yet, and Oxide's generic tool approvals remain a separate gate.
+policy, `apps revoke` and a self-automation rule that refuses the hosting bundle,
+all re-read on every call so a decision made while a helper session runs takes
+effect without reconnecting ([configuration](configuration.md#app-policy)). The
+helper has no settings UI for it yet, and Oxide's generic tool approvals remain a
+separate gate.
+
+Input isolation is narrower than a separate desktop: `type_text` and `press_key`
+with `background: true` deliver keys to one process without activating it, while
+pointer events still move the real cursor. A preview can be current without a
+tool call — the `computer-use://screen` resource captures on read and a
+subscriber is told when a call may have changed the screen — but it is still
+pulled by the client, not pushed by the runtime.
 
 A gesture yields to the person: a drag or a long `type_text` stops when input
 arrives from anyone but this process, and says so. See

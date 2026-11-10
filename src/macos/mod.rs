@@ -30,6 +30,9 @@ pub struct Runtime {
     nodes: Vec<Cached>,
     cached_app: Option<String>,
     policy: Policy,
+    /// The `.app` that launched this server, resolved once: it is the app a
+    /// self-automation rule may refuse to drive.
+    host: Option<String>,
 }
 
 impl Default for Runtime {
@@ -38,6 +41,7 @@ impl Default for Runtime {
             nodes: Vec::new(),
             cached_app: None,
             policy: Policy::load(),
+            host: crate::permissions::launching_app(),
         }
     }
 }
@@ -63,6 +67,18 @@ fn literal_escape_note(text: &str) -> Option<String> {
         "The text contains {} as literal characters and they were typed as written. A real newline in `text` is sent as the Return key; `press_key` with Return or Tab moves between fields.",
         escaped.join(", ")
     ))
+}
+
+/// Whether the app being resolved is the bundle that hosts this server. An
+/// unreadable identity is not the host: refusing on a missing identity would
+/// block every unbundled app.
+fn drives_itself(host: Option<&str>, running: Option<&str>) -> bool {
+    match (host, running) {
+        (Some(host), Some(running)) => {
+            !running.is_empty() && running.trim_end_matches('/') == host.trim_end_matches('/')
+        }
+        _ => false,
+    }
 }
 
 fn describe_typing(typed: &input::Typed, text: &str) -> String {
@@ -195,7 +211,28 @@ impl Runtime {
         })?;
         let pid = app.pid;
         self.policy.authorize(&app.name, || apps::identity(pid))?;
+        self.check_self_automation(&app)?;
         Ok(app)
+    }
+
+    /// Refuse to drive the window this server is hosted in: an agent clicking its
+    /// own transcript is a loop, and the policy can say so. Only the hosting
+    /// bundle matches, compared by path.
+    fn check_self_automation(&self, app: &apps::App) -> Result<()> {
+        if self.policy.self_automation() == policy::Fallback::Allow {
+            return Ok(());
+        }
+        let Some(host) = self.host.as_deref() else {
+            return Ok(());
+        };
+        let running = apps::identity(app.pid).map(|identity| identity.path);
+        if !drives_itself(Some(host), running.as_deref()) {
+            return Ok(());
+        }
+        bail!(
+            "`{}` is the app hosting this MCP server ({host}), and the policy refuses self-automation: clicking the window you are shown in loops. Name another app, or allow it with `oxide-reins apps self-automation allow`",
+            app.name
+        )
     }
 
     /// Only a decision pinned to a bundle identity is worth reading the running
@@ -655,6 +692,8 @@ impl Runtime {
             .get("text")
             .and_then(Value::as_str)
             .ok_or_else(|| anyhow!("`text` is required"))?;
+        let background = bool_arg(args, "background");
+        let mut target: Option<apps::App> = None;
         match string_arg(args, "app") {
             Some(name) => {
                 let app = self.resolved(&name)?;
@@ -664,36 +703,76 @@ impl Runtime {
                         .element
                         .focus()?;
                 }
-                Self::app_element(&app)?.activate_app()?;
+                if background {
+                    target = Some(app);
+                } else {
+                    Self::app_element(&app)?.activate_app()?;
+                }
             }
-            None => self.guard()?,
+            None => {
+                if background {
+                    bail!("`background` needs `app`: the input is addressed to that process");
+                }
+                self.guard()?;
+            }
         }
-        let typed = input::type_text(text)?;
-        Ok(describe_typing(&typed, text))
+        let typed = match &target {
+            Some(app) => input::type_text_in(app.pid, text)?,
+            None => input::type_text(text)?,
+        };
+        let mut reply = describe_typing(&typed, text);
+        if let Some(app) = &target {
+            reply.push_str(&format!(
+                "\nDelivered to {} (pid {}) without activating it; an app that keeps its own key focus can ignore input sent this way, so verify with get_app_state.",
+                app.name, app.pid
+            ));
+        }
+        Ok(reply)
     }
 
     pub fn press_key(&mut self, args: &Value) -> Result<String> {
         let key = string_arg(args, "key").ok_or_else(|| anyhow!("`key` is required"))?;
         let modifiers = string_arg(args, "modifiers").unwrap_or_default();
         input::check(&key, &modifiers)?;
+        let background = bool_arg(args, "background");
+        let mut target: Option<apps::App> = None;
         match string_arg(args, "app") {
             Some(name) => {
                 let app = self.resolved(&name)?;
                 self.guard()?;
-                Self::app_element(&app)?.activate_app()?;
+                if background {
+                    target = Some(app);
+                } else {
+                    Self::app_element(&app)?.activate_app()?;
+                }
             }
-            None => self.guard()?,
+            None => {
+                if background {
+                    bail!("`background` needs `app`: the input is addressed to that process");
+                }
+                self.guard()?;
+            }
         }
-        let pressed = input::press(&key, &modifiers)?;
+        let pressed = match &target {
+            Some(app) => input::press_in(app.pid, &key, &modifiers)?,
+            None => input::press(&key, &modifiers)?,
+        };
         let spelling = match key.rsplit_once('+') {
             Some((_, rest)) if !rest.is_empty() => rest.trim(),
             _ => key.trim(),
         };
-        Ok(if pressed == spelling {
+        let mut reply = if pressed == spelling {
             format!("Pressed `{}`.", key.trim())
         } else {
             format!("Pressed `{pressed}` (for `{}`).", key.trim())
-        })
+        };
+        if let Some(app) = &target {
+            reply.push_str(&format!(
+                "\nDelivered to {} (pid {}) without activating it; an app that keeps its own key focus can ignore input sent this way, so verify with get_app_state.",
+                app.name, app.pid
+            ));
+        }
+        Ok(reply)
     }
 
     pub fn scroll(&mut self, args: &Value) -> Result<String> {
@@ -811,6 +890,21 @@ mod tests {
     fn a_missing_or_empty_needle_has_no_range() {
         assert!(find_range("hello", "bye").is_none());
         assert!(find_range("hello", "").is_none());
+    }
+
+    #[test]
+    fn only_the_hosting_bundle_counts_as_driving_itself() {
+        assert!(drives_itself(
+            Some("/Applications/Oxide.app"),
+            Some("/Applications/Oxide.app/")
+        ));
+        assert!(!drives_itself(
+            Some("/Applications/Oxide.app"),
+            Some("/Applications/TextEdit.app")
+        ));
+        assert!(!drives_itself(Some("/Applications/Oxide.app"), None));
+        assert!(!drives_itself(None, Some("/Applications/Oxide.app")));
+        assert!(!drives_itself(Some("/Applications/Oxide.app"), Some("")));
     }
 
     #[test]

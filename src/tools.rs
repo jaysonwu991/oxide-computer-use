@@ -144,10 +144,11 @@ pub fn specs() -> Value {
             json!({
                 "text": { "type": "string" },
                 "app": { "type": "string", "description": APP },
-                "element_index": { "type": "integer" }
+                "element_index": { "type": "integer" },
+                "background": { "type": "boolean", "description": "Deliver the keys to this app's process without activating it or touching the real keyboard focus. Off by default: the desktop changes hands only when asked." }
             }),
             &["text"],
-            "Type text through the keyboard into the focused control of an app (activates the app, and focuses element_index first when given). A newline inside the text is pressed as Return. Use it for a search box, form field or terminal; it moves the real keyboard focus.",
+            "Type text through the keyboard into an app: the focused control, after activating the app, or with background true, that app's process alone. A newline inside the text is pressed as Return. Use it for a search box, form field or terminal.",
             "type_text",
             false
         ),
@@ -155,10 +156,11 @@ pub fn specs() -> Value {
             json!({
                 "key": { "type": "string" },
                 "modifiers": { "type": "string", "description": "For example \"cmd+shift\"." },
+                "background": { "type": "boolean", "description": "Deliver the key to this app's process without activating it. Off by default." },
                 "app": { "type": "string", "description": APP }
             }),
             &["key"],
-            "Press one keyboard key, optionally with modifiers, in a GUI app. Key names: Return, Tab, Escape, Space, Delete, Forward_Delete, Home, End, Page_Up, Page_Down, Left, Right, Up, Down, F1-F12 or a single character; the spellings \"\\n\", \"\\t\" and \"\\r\" mean Return and Tab. Modifiers: cmd, shift, alt, ctrl. Use it to submit a form, dismiss a dialog or move between fields.",
+            "Press one keyboard key, optionally with modifiers, in a GUI app, on the real desktop or with background true to that app's process alone. Key names: Return, Tab, Escape, Space, Delete, Forward_Delete, Home, End, Page_Up, Page_Down, Left, Right, Up, Down, F1-F12 or a single character; the spellings \"\\n\", \"\\t\" and \"\\r\" mean Return and Tab. Modifiers: cmd, shift, alt, ctrl. Use it to submit a form, dismiss a dialog or move between fields.",
             "press_key",
             false
         ),
@@ -200,6 +202,20 @@ pub fn specs() -> Value {
             "screenshot"
         )
     ])
+}
+
+/// Whether a tool only reads. A call that is not read-only may have changed the
+/// screen, which is what a subscribed client is told about.
+pub fn is_read_only(name: &str) -> bool {
+    specs()
+        .as_array()
+        .and_then(|tools| {
+            tools
+                .iter()
+                .find(|tool| tool["name"].as_str() == Some(name))
+        })
+        .and_then(|tool| tool["annotations"]["readOnlyHint"].as_bool())
+        .unwrap_or(false)
 }
 
 pub fn execute(runtime: &mut Runtime, name: &str, args: &Value) -> Result<Outcome> {

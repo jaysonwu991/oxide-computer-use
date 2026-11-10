@@ -110,6 +110,12 @@ enum AppsCommand {
         /// allow or deny.
         mode: String,
     },
+    /// Decide whether the app hosting this server may be driven.
+    #[command(name = "self-automation")]
+    SelfAutomation {
+        /// allow or deny.
+        mode: String,
+    },
     /// Clear every decision and allow every app again.
     Reset,
 }
@@ -298,10 +304,17 @@ fn apps(command: AppsCommand) -> Result<()> {
             policy.set_fallback(fallback)?;
             println!("{}", policy.describe());
         }
+        AppsCommand::SelfAutomation { mode } => {
+            let fallback = Fallback::parse(&mode).with_context(|| {
+                format!("`{mode}` is not a self-automation policy; pass `allow` or `deny`")
+            })?;
+            policy.set_self_automation(fallback)?;
+            println!("{}", policy.describe());
+        }
         AppsCommand::Reset => {
             policy.clear()?;
             println!(
-                "Cleared the app policy; every app with Accessibility access is reachable again."
+                "Cleared the app policy; every app is reachable again, except the hosting app that self-automation refuses."
             );
         }
     }
@@ -367,6 +380,10 @@ fn doctor(as_json: bool, prompt: bool) -> Result<()> {
                     Fallback::Deny => "deny",
                 },
                 "one_time_approval": policy.one_time(),
+                "self_automation": match policy.self_automation() {
+                    Fallback::Allow => "allow",
+                    Fallback::Deny => "deny",
+                },
                 "policy_error": policy.error(),
                 "provenance": provenance(),
                 "launching_app": permissions::launching_app(),

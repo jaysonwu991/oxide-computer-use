@@ -37,6 +37,13 @@ The file is re-read on every call, so an approval or a revocation made in a
 terminal lands in a running `mcp` server. An app marked `[approved for one call]`
 in `list_apps` has a one-time approval that the next call spends.
 
+**Self-automation** is a rule of its own, checked after the app policy: the app
+bundle that launched this server is refused by default, because an agent clicking
+the window it is shown in is a loop. The refusal names the bundle and
+`oxide-reins apps self-automation allow`. A server started from a shell has no
+app bundle above it, so nothing is refused there; a server hosted by Oxide, an
+editor or a terminal refuses that host and reaches everything else normally.
+
 ### Element indexes
 
 `get_app_state` and `query` build a *snapshot*: a flat, numbered rendering of an
@@ -194,6 +201,24 @@ permission. Without `app` the whole screen is captured. A covered or off-Space
 window can fail in `screencapture`; the error says so instead of returning a
 picture of something else.
 
+## Preview: the screen resource
+
+The server publishes one MCP resource, `computer-use://screen` (PNG):
+
+- `resources/list` names it;
+- `resources/read` captures the screen then and returns a base64 PNG block, so a
+  client can show a current view without spending a tool call of its own — and
+  without the image inflating a tool reply;
+- `resources/subscribe` registers interest. After that, every call that could
+  have changed the screen — any action tool, and any read that returned an image
+  — is followed by `notifications/resources/updated` with the resource URI. A
+  call that only reads the accessibility tree reports nothing.
+
+That is the whole streaming contract a stdio server can offer: the client decides
+how often to re-read, and it is told when re-reading is worth it. The server does
+not post frames on its own timer, and capture still needs Screen Recording; a
+read without it is an error, not an empty image.
+
 ## Action tools
 
 ### `click`
@@ -262,6 +287,7 @@ characters, so an agent can correct the needle. When the app reports
 | `text` | string | required | Text to type. |
 | `app` | string | — | App to activate and, with `element_index`, the element to focus. |
 | `element_index` | integer | — | Element to focus before typing. |
+| `background` | boolean | `false` | Deliver to `app`'s process only, without activating it. |
 
 The text is sent as keyboard event pairs carrying a UTF-16 string, so it arrives
 in the app's key handling rather than being pasted. The target must be the
@@ -282,7 +308,8 @@ that the rest was not sent.
 | --- | --- | --- | --- |
 | `key` | string | required | A key name, a single character, or `cmd+s` style with inline modifiers. |
 | `modifiers` | string | — | `cmd`, `shift`, `alt`/`opt`, `ctrl`, combined with `+` or `,`. |
-| `app` | string | — | App to activate first. |
+| `app` | string | — | App to activate first, or the app a background press is addressed to. |
+| `background` | boolean | `false` | Deliver to that app's process only, without activating it. |
 
 Key names: `Return`, `Enter`, `Tab`, `Space`, `Delete`/`Backspace`,
 `Forward_Delete`, `Escape`, `Home`, `End`, `Page_Up`, `Page_Down`, `Left`,
@@ -292,6 +319,19 @@ keyboard key. The spellings `\n`, `\r`, `newline`, `linefeed`/`lf` and `cr` pres
 release. The key is resolved before the app is activated or a permission is
 asked for, and an unknown key is refused with a hint that names both the escape
 spellings and the alternative, not silently dropped.
+
+### Background input
+
+`type_text` and `press_key` activate the target app by default, because that is
+what the real keyboard and pointer require. `background: true` with `app` set
+posts the same events to that process alone (`CGEventPostToPid`): the app is not
+brought forward and the person keeps their focus. Both tools say which path ran.
+
+An app that routes key handling through its own window or focus state can ignore
+input delivered this way — the events never reach the system keyboard focus — so
+the reply tells you to confirm with `get_app_state` rather than claiming the text
+landed. `background` without `app` is refused, since there is no process to
+address. The takeover rule does not apply here: nothing was taken from the person.
 
 ### `scroll`
 
@@ -346,6 +386,9 @@ next call starts from a fresh observation. Nothing is queued behind it.
 | Policy file does not parse | Refuses every app, naming the path and `apps reset`. |
 | One-time approval already spent | Refuses with the two approval commands. |
 | A person takes over during a drag or a long type | Releases the button, stops, and reports the takeover. |
+| The hosting app is named under a deny-self-automation policy | Refuses, naming the bundle and `apps self-automation allow`. |
+| `background: true` without `app` | Refuses before changing focus or asking for a permission. |
+| The screen resource is read without Screen Recording | JSON-RPC error carrying the permission message. |
 | Missing Accessibility or Screen Recording | Refuses, naming the Settings pane. |
 | Screenshot unavailable during `include_screenshot` | Returns the tree plus the reason the image is missing. |
 

@@ -30,6 +30,7 @@ extern "C" {
     fn CGEventSetLocation(event: CGEventRef, location: CGPoint);
     fn CGEventSetIntegerValueField(event: CGEventRef, field: u32, value: i64);
     fn CGEventPost(tap: u32, event: CGEventRef);
+    fn CGEventPostToPid(pid: i32, event: CGEventRef);
     fn CGEventSourceCreate(state_id: i32) -> CFTypeRef;
     fn CGEventSourceSetLocalEventsSuppressionInterval(source: CFTypeRef, seconds: f64);
 }
@@ -406,8 +407,24 @@ pub fn check(key_spec: &str, modifier_spec: &str) -> Result<String> {
     parse(key_spec, modifier_spec).map(|(key, _)| key.name)
 }
 
-/// Press one key and report the name of the key that was pressed.
-pub fn press(key_spec: &str, modifier_spec: &str) -> Result<String> {
+/// Where a posted event goes. `Process` is ``CGEventPostToPid``: the app
+/// receives it without being activated, so the person's desktop does not change
+/// hands. Apps that route key handling through their own window/focus state can
+/// ignore it, which is why the reply says the delivery path.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Target {
+    Desktop,
+    Process(i32),
+}
+
+fn deliver(target: Target, event: CGEventRef) {
+    match target {
+        Target::Desktop => unsafe { CGEventPost(HID_EVENT_TAP, event) },
+        Target::Process(pid) => unsafe { CGEventPostToPid(pid, event) },
+    }
+}
+
+fn press_with(target: Target, key_spec: &str, modifier_spec: &str) -> Result<String> {
     let (key, flags) = parse(key_spec, modifier_spec)?;
     unsafe {
         let down = Event(CGEventCreateKeyboardEvent(std::ptr::null(), key.code, true));
@@ -423,13 +440,23 @@ pub fn press(key_spec: &str, modifier_spec: &str) -> Result<String> {
             CGEventSetFlags(down.0, flags);
             CGEventSetFlags(up.0, flags);
         }
-        CGEventPost(HID_EVENT_TAP, down.0);
-        CGEventPost(HID_EVENT_TAP, up.0);
+        deliver(target, down.0);
+        deliver(target, up.0);
     }
     Ok(key.name)
 }
 
-fn type_units(text: &str) -> Result<()> {
+/// Press one key on the real desktop and report the name of the key that was
+/// pressed.
+pub fn press(key_spec: &str, modifier_spec: &str) -> Result<String> {
+    press_with(Target::Desktop, key_spec, modifier_spec)
+}
+
+pub fn press_in(pid: i32, key_spec: &str, modifier_spec: &str) -> Result<String> {
+    press_with(Target::Process(pid), key_spec, modifier_spec)
+}
+
+fn type_units(target: Target, text: &str) -> Result<()> {
     let units: Vec<u16> = text.encode_utf16().collect();
     unsafe {
         let down = Event(CGEventCreateKeyboardEvent(std::ptr::null(), 0, true));
@@ -439,8 +466,8 @@ fn type_units(text: &str) -> Result<()> {
         }
         CGEventKeyboardSetUnicodeString(down.0, units.len(), units.as_ptr());
         CGEventKeyboardSetUnicodeString(up.0, units.len(), units.as_ptr());
-        CGEventPost(HID_EVENT_TAP, down.0);
-        CGEventPost(HID_EVENT_TAP, up.0);
+        deliver(target, down.0);
+        deliver(target, up.0);
     }
     Ok(())
 }
@@ -455,10 +482,23 @@ pub struct Typed {
 /// because an app that receives a newline inside one keyboard event usually
 /// inserts nothing; the count is reported so the caller can see what landed.
 pub fn type_text(text: &str) -> Result<Typed> {
+    type_with(Target::Desktop, text)
+}
+
+pub fn type_text_in(pid: i32, text: &str) -> Result<Typed> {
+    type_with(Target::Process(pid), text)
+}
+
+fn type_with(target: Target, text: &str) -> Result<Typed> {
     if text.is_empty() {
         bail!("text is empty");
     }
-    let watch = Takeover::start();
+    // A person taking over matters when the real desktop is being driven; input
+    // aimed at one process never takes the pointer or the focus from them.
+    let watch = match target {
+        Target::Desktop => Takeover::start(),
+        Target::Process(_) => None,
+    };
     let mut typed = Typed {
         characters: 0,
         line_breaks: 0,
@@ -466,7 +506,7 @@ pub fn type_text(text: &str) -> Result<Typed> {
     };
     for (index, segment) in text.split('\n').enumerate() {
         if index > 0 {
-            press("Return", "")?;
+            press_with(target, "Return", "")?;
             typed.line_breaks += 1;
             if let Some(kind) = watch.as_ref().and_then(Takeover::poll) {
                 typed.takeover = Some(kind);
@@ -477,7 +517,7 @@ pub fn type_text(text: &str) -> Result<Typed> {
         if segment.is_empty() {
             continue;
         }
-        type_units(segment)?;
+        type_units(target, segment)?;
         typed.characters += segment.chars().count();
     }
     Ok(typed)

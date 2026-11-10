@@ -39,16 +39,16 @@ where noted.
 
 | Where | Guards |
 | --- | --- |
-| `src/mcp.rs` tests | initialize shape and instructions that name every tool and the policy commands, revision echo (all three supported, unknown → newest), notifications not answered, unknown method → `-32601`, tool failure → `isError` result |
+| `src/mcp.rs` tests | initialize shape (tools and a subscribable resource) and instructions that name every tool and the policy commands, revision echo (all three supported, unknown → newest), the screen resource listed and read by URI with an unknown-URI error, a capture turned into a PNG block, a subscribed client told once on subscribe and again only after an action, unsubscribe stopping that, notifications not answered, unknown method → `-32601`, tool failure → `isError` result |
 | `src/tools.rs` tests | every tool has a description, an object schema and a read-only hint; every description carries a word an agent actually searches for; observers are read-only and actions are not; names unique; result shape with and without an image; every tool documented in `docs/tools.md` and listed in the README table |
 | `src/install.rs` tests | client parsing and aliases, name validation (the names Claude Code and Codex already use are refused), per-client default names, JSON and TOML snippets |
-| `src/policy.rs` tests | empty policy allows all, deny beats allow, allow list excludes the rest, a changed bundle identity refused, a one-call approval spent and persisted away, an unreadable file refusing every app, a decision written by another process reaching a running policy, save/load round trip |
+| `src/policy.rs` tests | empty policy allows all, deny beats allow, allow list excludes the rest, a changed bundle identity refused, a one-call approval spent and persisted away, an unreadable file refusing every app, a decision written by another process reaching a running policy, self-automation refused by default, save/load round trip |
 | `src/macos/input.rs` tests | key codes for named keys, `\n`/`\r`/`\t` read as `Return`/`Tab`, the pressed key named back, modifier aliases, unknown key refused with the escape hint |
 | `src/macos/takeover.rs` tests | each kind of person input named, the tap mask covering buttons, movement, keys and scrolling, only a foreign event source counting as a person |
 | `src/macos/apps.rs` tests | the outermost `.app` wins for a nested helper, a binary outside a bundle has no identity, an unreadable bundle has no identifier |
 | `src/macos/tree.rs` tests | value truncation with true length, index/indent rendering, multi-line values flattened |
-| `src/macos/mod.rs` tests | UTF-16 range math (including an emoji), case-insensitive fallback, output cap note, line-break counting in a `type_text` reply, a literal `\n` named in the reply, lenient argument parsing |
-| `tests/cli.rs` | tool list, MCP handshake with a real subprocess, installers writing every client's file, merge preserving other settings (including Codex's own `[computer_use]` table), reserved-name refusal, policy round trip with `revoke`/`grant-once`/`policy deny`, an unreadable policy refusing every app, `doctor --json` provenance, `tools --json`, UTF-8 through stdio, unknown tool exit code, `--calls-file` error naming the resolved path |
+| `src/macos/mod.rs` tests | UTF-16 range math (including an emoji), case-insensitive fallback, output cap note, line-break counting in a `type_text` reply, a literal `\n` named in the reply, only the hosting bundle counting as driving itself, lenient argument parsing |
+| `tests/cli.rs` | tool list, MCP handshake with a real subprocess, installers writing every client's file, merge preserving other settings (including Codex's own `[computer_use]` table), reserved-name refusal, policy round trip with `revoke`/`grant-once`/`policy deny`, the self-automation rule and its `doctor` report, an unreadable policy refusing every app, `doctor --json` provenance, `tools --json`, a stdio session that subscribes to the screen resource and receives its notification after an action, UTF-8 through stdio, unknown tool exit code, `--calls-file` error naming the resolved path |
 
 What they cannot cover: anything that needs Accessibility or Screen Recording —
 window binding, `set_value` read-back against a real control, `select_text`,
@@ -179,6 +179,8 @@ oxide-reins call get_app_state --args '{"app":"TextEdit"}'   # refused, naming g
 oxide-reins apps grant-once "TextEdit"
 oxide-reins call get_app_state --args '{"app":"TextEdit"}'   # allowed once, then the grant is gone
 oxide-reins apps revoke "TextEdit"
+oxide-reins apps self-automation deny
+oxide-reins call type_text --args '{"app":"TextEdit","text":"background","background":true}'
 ```
 
 Expected: the click reports AXPress or a pointer event; `set_value` echoes the
@@ -190,8 +192,13 @@ both lines land in the document; `press_key` with a literal `\n` reports
 deny-by-default policy and as approved for one call after `grant-once`, and the
 config no longer holds the grant after the call that used it. Watch the pointer
 during the drag and press a key while it runs: the drag should stop and report
-`user takeover`. Then run the same sequence through `--calls` and confirm the
-indexes stay valid across calls.
+`user takeover`. `background: true` types into TextEdit while another app keeps
+the keyboard focus and says so in the reply. With self-automation denied, a call
+against the hosting app is refused; with it allowed, the same call proceeds. Read
+`computer-use://screen` once and then as a subscriber: the read returns a PNG,
+and each action is followed by one `notifications/resources/updated`. Then run
+the same sequence through `--calls` and confirm the indexes stay valid across
+calls.
 
 ## Releasing
 

@@ -7,7 +7,10 @@ app's accessibility tree, and the actions that drive it.
 
 - `src/main.rs`: the CLI (`mcp`, `call`, `tools`, `doctor`, `install`, `apps`).
 - `src/mcp.rs`: newline-delimited JSON-RPC over stdio; echoes the client's
-  protocol revision when it is one of the three we answer.
+  protocol revision when it is one of the three we answer. Publishes the
+  `computer-use://screen` resource; a subscriber gets
+  `notifications/resources/updated` after any call that could have changed the
+  screen.
 - `src/tools.rs`: the single source of the tool list. A tool's schema, its
   dispatch arm and its row in the README table are the same tool; adding one
   means changing all three, and `tools::tests` counts them.
@@ -65,6 +68,11 @@ app's accessibility tree, and the actions that drive it.
   a name-only match or a file that is read once per process.
 - A person's input wins: a paced gesture stops when input arrives from anything
   but this process, and says so.
+- `background: true` posts keys to one process (`CGEventPostToPid`) instead of the
+  HID tap; it must never activate the app, and its reply must ask for
+  verification because an app may ignore delivered keys.
+- The hosting bundle is refused unless `apps self-automation allow` says
+  otherwise. Compare bundle paths; a missing identity is not the host.
 - Observations are cheap by default: no screenshot unless asked, an output cap
   that says it truncated, and `query` for large trees.
 - Tool failures are `isError` results with a message an agent can act on, not

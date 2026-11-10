@@ -9,7 +9,7 @@ launches it.
 
 | File | Written by | Read by | Purpose |
 | --- | --- | --- | --- |
-| `~/.config/oxide-reins/config.json` | `oxide-reins apps allow\|deny\|revoke\|grant-once\|policy\|reset` | every tool call | Per-app approvals, their bundle identities and the default policy. |
+| `~/.config/oxide-reins/config.json` | `oxide-reins apps allow\|deny\|revoke\|grant-once\|policy\|self-automation\|reset` | every tool call | Per-app approvals, their bundle identities, the default policy and the self-automation rule. |
 | `$OXIDE_REINS_CONFIG` | you | the server at start | Overrides the policy path (a file, not a directory). |
 | `~/.oxide/mcp.json` | `install --client oxide` | Oxide | Global MCP servers. |
 | `./.oxide/mcp.json` | `install --client oxide --project` | Oxide | Project MCP servers. |
@@ -56,7 +56,8 @@ does reserve is refused with that explanation. Names may contain letters, digits
       "path": "/System/Library/CoreServices/Finder.app"
     }
   },
-  "one_time_grant": { "app": "Preview" }
+  "one_time_grant": { "app": "Preview" },
+  "self_automation": "allow"
 }
 ```
 
@@ -90,6 +91,14 @@ Semantics:
   `oxide-reins mcp` server that is already running; nothing has to be restarted.
 - **A file that does not parse refuses every app**, with a message naming the
   path and `apps reset`, instead of falling back to "unlisted, so allowed".
+- **Self-automation is refused by default.** The app bundle that launched the
+  server — the parent app the MCP host runs under, found by walking up to a
+  `.app` — may not be driven, because an agent clicking its own window is a loop.
+  `"self_automation": "allow"` (or `apps self-automation allow`) lifts it. The
+  check compares bundle paths, so it never matches a different app, and a server
+  started from a plain shell has no host to refuse. This is narrower than Codex's
+  documented terminal and self-automation restriction: shells stay reachable
+  unless one is the host.
 
 Commands:
 
@@ -100,6 +109,7 @@ oxide-reins apps grant-once "Preview"   # approve exactly one call
 oxide-reins apps deny "1Password"       # always wins
 oxide-reins apps revoke "Finder"        # withdraw every decision about one app, a deny included
 oxide-reins apps policy deny            # an app with no decision is refused
+oxide-reins apps self-automation allow  # let the hosting app be driven too
 oxide-reins apps reset                  # clear everything and allow every app again
 ```
 
@@ -156,8 +166,8 @@ connection and verify the recipient in System Settings. Existing grants to
 Oxide.app do not grant the helper access. Moving/rebuilding a development bundle
 can affect attribution or leave a stale entry; recheck grants after reconnecting.
 
-`oxide-reins doctor` reports both, plus the policy, its path and the build it
-runs (see [provenance](development.md#provenance)).
+`oxide-reins doctor` reports both, plus the policy, the self-automation rule, its
+path and the build it runs (see [provenance](development.md#provenance)).
 `oxide-reins doctor --prompt` asks macOS to show the prompts. Neither can grant
 on your behalf; only System Settings can.
 
