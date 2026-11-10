@@ -215,6 +215,8 @@ Oxide Computer Use instead. Existing Oxide.app grants do not cover that helper;
 reconnect its MCP server after changing grants. The observed
 launching app in `permissions` is a diagnostic hint; macOS determines the grant
 recipient. Never automate a grant or read the private TCC database to diagnose it.
+The setup order, the two approval gates and the controls Oxide owns are in the
+README's [Use it with Oxide Desktop](../README.md#use-it-with-oxide-desktop).
 
 With an Oxide build that supports tool image events, call `screenshot` or
 `get_app_state` with `include_screenshot: true`. The tool card shows a clickable

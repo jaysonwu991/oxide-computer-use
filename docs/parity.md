@@ -11,7 +11,10 @@ Oxide's window: the client half lives in the Oxide checkout.
 
 The reference product is Codex/ChatGPT Computer Use as its
 [public documentation](https://learn.chatgpt.com/docs/computer-use) describes it;
-its private runtime is in neither repository.
+its private runtime is in neither repository. The README carries the short
+version for someone deciding whether to use this server —
+[what is different from Codex Computer Use](../README.md#what-is-different-from-codex-computer-use)
+and [how to work with Oxide Desktop](../README.md#use-it-with-oxide-desktop).
 
 ## 1. Input and takeover
 
