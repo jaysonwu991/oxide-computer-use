@@ -136,7 +136,7 @@ fn policy_check() -> Check {
 
 #[cfg(target_os = "macos")]
 fn native(runtime: &mut Runtime, app: Option<&str>, input: bool) -> Vec<Check> {
-    use crate::macos::{apps, takeover};
+    use crate::macos::{apps, ax, takeover};
 
     let mut checks = Vec::new();
     let running = apps::running_apps();
@@ -164,6 +164,7 @@ fn native(runtime: &mut Runtime, app: Option<&str>, input: bool) -> Vec<Check> {
             "bundle identity",
             "no app to read; pass --app",
         ));
+        checks.push(Check::skipped("read bound", "no app to read; pass --app"));
         checks.push(Check::skipped("screenshot", "no app to read; pass --app"));
         checks.push(Check::skipped(
             "takeover tap",
@@ -201,6 +202,13 @@ fn native(runtime: &mut Runtime, app: Option<&str>, input: bool) -> Vec<Check> {
                 )
             })
             .map(|identity| format!("{} at {}", identity.bundle_id, identity.path)),
+    ));
+
+    checks.push(Check::from_result(
+        "read bound",
+        apps::resolve(&app_name)
+            .ok_or_else(|| anyhow::anyhow!("{app_name} is no longer running"))
+            .and_then(|app| ax::read_bound(app.pid)),
     ));
 
     checks.push(Check::from_result(

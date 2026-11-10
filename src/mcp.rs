@@ -153,7 +153,9 @@ impl Server {
             .get("arguments")
             .cloned()
             .unwrap_or_else(|| json!({}));
-        let result = tools::execute(&mut self.runtime, name, &args);
+        let result = contained(&format!("tool `{name}`"), || {
+            tools::execute(&mut self.runtime, name, &args)
+        });
         // A failed action may still have moved something, so the subscription
         // follows the attempt, not the outcome.
         let touched = match &result {
@@ -206,7 +208,9 @@ impl Server {
         if uri != SCREEN_URI {
             return Err(unknown_resource(uri));
         }
-        match tools::execute(&mut self.runtime, "screenshot", &json!({})) {
+        match contained("reading the screen resource", || {
+            tools::execute(&mut self.runtime, "screenshot", &json!({}))
+        }) {
             Ok(outcome) => Ok(json!({ "contents": contents(outcome) })),
             Err(error) => Err(json!({
                 "code": -32603,
@@ -235,6 +239,31 @@ fn contents(outcome: tools::Outcome) -> Vec<Value> {
             })
         })
         .collect()
+}
+
+/// One call cannot end the connection: a panic inside a tool is answered as an
+/// error result and the next request is still served. The runtime's element cache
+/// is rebuilt by the next observation, and every indexed action already refuses
+/// an element that is no longer bound to its window, so a stale cache fails loudly
+/// instead of acting on the wrong element.
+fn contained<T>(what: &str, call: impl FnOnce() -> Result<T>) -> Result<T> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(call)) {
+        Ok(result) => result,
+        Err(payload) => Err(anyhow::anyhow!(
+            "{what} stopped with an internal error ({}). The server is still running; call get_app_state again before the next action",
+            panic_text(payload.as_ref())
+        )),
+    }
+}
+
+fn panic_text(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(text) = payload.downcast_ref::<&str>() {
+        (*text).to_string()
+    } else if let Some(text) = payload.downcast_ref::<String>() {
+        text.clone()
+    } else {
+        "no message".to_string()
+    }
 }
 
 #[cfg(test)]
@@ -497,5 +526,29 @@ mod tests {
         }))
         .expect("the request is answered");
         assert_eq!(response["result"]["isError"], json!(true));
+    }
+
+    #[test]
+    fn a_call_that_panics_is_answered_and_the_server_keeps_serving() {
+        let error =
+            contained::<()>("tool `demo`", || panic!("boom")).expect_err("a panic is an error");
+        let message = format!("{error:#}");
+        assert!(message.contains("tool `demo`"), "{message}");
+        assert!(message.contains("boom"), "{message}");
+        assert!(message.contains("get_app_state"), "{message}");
+
+        let response = request(json!({
+            "jsonrpc": "2.0",
+            "id": 6,
+            "method": "tools/list",
+            "params": {}
+        }))
+        .expect("the server still answers");
+        assert!(response["result"]["tools"].is_array());
+    }
+
+    #[test]
+    fn a_contained_call_passes_its_value_through() {
+        assert_eq!(contained("demo", || Ok(7)).unwrap(), 7);
     }
 }

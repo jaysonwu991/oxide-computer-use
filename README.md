@@ -11,6 +11,10 @@ The idea matches [open-computer-use](https://github.com/iFurySt/open-computer-us
 the core implementation is a single Rust binary with
 [one tool list](src/tools.rs) and explicit action failures. Oxide also provides
 an opt-in [native companion app](docs/oxide-helper.md) in its Desktop repository.
+[Use it with Oxide Desktop](#use-it-with-oxide-desktop) is the setup that matters
+when Oxide is the host, and
+[what is different from Codex Computer Use](#what-is-different-from-codex-computer-use)
+says which half of that product this server is.
 
 ```text
 agent (Oxide / Claude Code / Codex / Cursor) ──stdio JSON-RPC──▶ oxide-reins
@@ -71,6 +75,42 @@ and `--client codex` use `oxide-reins-local` and sit beside the built-in rather
 than over it. `--name` picks another name where a client has none reserved.
 Details and the equivalent per-client commands are in
 [docs/clients.md](docs/clients.md).
+
+## Use it with Oxide Desktop
+
+Oxide hosts this server under its own bundle, so the permission grant, the
+approval prompt and the preview each belong to a different party than they do in
+a terminal setup. From a terminal on the same machine:
+
+```sh
+oxide-reins install --client oxide      # writes ~/.oxide/mcp.json as `oxide-reins`
+oxide mcp list                          # Oxide should show `oxide-reins` connected
+```
+
+Then, in this order:
+
+1. **Grant to Oxide, not to the binary.** macOS records Accessibility and Screen
+   Recording against the app that launches the server — `/Applications/Oxide.app`
+   when Oxide hosts it. Quit and reopen Oxide after changing Screen Recording.
+2. **Check from the connection that is failing.** The `permissions` tool runs
+   inside the process Oxide hosts and reports the launching app it observes;
+   `oxide-reins doctor` in a terminal measures that terminal instead, and the two
+   can disagree in both directions.
+3. **Two gates, and only one of them is per app.** Oxide's own approvals decide
+   whether a tool call may run; the [app policy](#check-permissions-and-policy)
+   below decides which apps this server will drive, and is re-read on every call.
+4. **Oxide's own window is refused as a target**, and so are terminal emulators,
+   until the user allows it (`apps self-automation allow`, `apps terminals allow`).
+   Those are the user's decisions, not a step to work around.
+5. **Preview and stop belong to Oxide.** Newer builds show the last image this
+   server returned in the details dock, a mouse glyph while a call runs, and
+   **Stop task**. The image comes from `screenshot`, `include_screenshot` or a
+   read of `computer-use://screen` — on request, never on a timer — and stopping a
+   turn does not undo a click or a write that already ran.
+6. **A separate app identity is available.** The opt-in
+   [native helper](docs/oxide-helper.md) hosts this same runtime with its own
+   permission entry and a menu-bar stop; `install --client oxide` registers the
+   standalone runtime and does not switch to it.
 
 ## Check permissions and policy
 
@@ -204,33 +244,73 @@ docs/              install, clients, comparison, parity, issue audit
   from the Oxide Desktop review: what this runtime now does, what stays in the
   client, and what is still unverified.
 
+## What is different from Codex Computer Use
+
+Codex Computer Use is a product with a client and a private runtime; this is a
+stdio server with no window of its own. Part of the comparison is therefore about
+which side a feature belongs to rather than whether it exists. The per-item
+record — with commands, evidence and what is still unverified — is
+[docs/parity.md](docs/parity.md); [docs/comparison.md](docs/comparison.md) covers
+`open-computer-use` as well.
+
+**Brought level in this runtime**
+
+- **Per-app approvals** — allow, deny, one call, revoke, and a default for an app
+  nobody decided about, pinned to the bundle identity, enforced before any
+  accessibility call and re-read on every call. The hosting app and terminal
+  emulators are refused unless a rule allows them.
+- **Background keyboard input** — `type_text` and `press_key` with
+  `background: true` post to one process without activating it, and the reply asks
+  for verification, because an app may ignore delivered keys. Pointer events still
+  move the real cursor: CoreGraphics has no per-process pointer path.
+- **Cursor takeover** — a paced drag or long `type_text` stops when input arrives
+  from anyone but this process and answers `user takeover`.
+- **A screen preview** — `computer-use://screen` captures on read, and a
+  subscriber is told after any call that could have changed it.
+- **Bounded, honest failure** — a read an app never answers fails within two
+  seconds and leaves the previous snapshot addressable, and a call that breaks
+  internally is an `isError` result rather than the end of the session.
+
+**Client windows, so not here**
+
+- The system-wide activity overlay, the settings pane, the built-in browser and
+  native `@App` selection are windows in Oxide or Codex. This server exposes the
+  surface such a pane would call — `apps list|allow|deny|revoke|grant-once|policy`,
+  `doctor --json`, `permissions` — and drives a browser through accessibility like
+  any other app.
+
+**Absent, with the reason it stays absent**
+
+- **Unlock, covering the display and relocking** — privileged session APIs and a
+  password this runtime will not ask for or store.
+- **A signed, notarized download** — needs a Developer ID certificate. Releases
+  are unsigned archives with a SHA-256, a manifest, an install marker and
+  `install.sh --check`.
+- **A Windows backend** — a second implementation, not a build flag. Other
+  platforms build the same tool list over a stub whose every tool returns an
+  explicit error.
+- **Pushed frames** — a stream would be bytes no client in this setup reads. The
+  preview is a resource read plus an update notification.
+
 ## Limits
 
-- macOS only. Other platforms compile to a build whose tools return an explicit
-  "not implemented here" error. There is no Windows backend.
-- Pointer events need the target app in front. `set_value` and `AXPress` work in
-  the background, and `type_text`/`press_key` with `background: true` deliver keys
-  to one process without activating it — an app that keeps its own key focus may
-  ignore them, so the reply asks for verification.
+- macOS only: another platform builds the same tool list over a stub that returns
+  an explicit error. There is no Windows backend, and no desktop of its own — the
+  real pointer moves during a drag, pointer input activates the target app, and a
+  killed server is a new server on the client's next start.
+- Pointer input needs the target app in front. `set_value` and `AXPress` work in
+  the background, and an app that keeps its own key focus may ignore background
+  keys, so the reply asks for verification.
 - `oxide-reins verify` proves what the machine can do (tree, capture, identity,
-  takeover tap, background typing) and exits nonzero when a path is missing; it
-  does not grant a permission.
+  read bound, takeover tap, background typing) and exits nonzero when a path is
+  missing; it does not grant a permission.
 - The preview is a resource, not a stream: `resources/read` on
   `computer-use://screen` captures on demand, and a subscriber is told when a
   call may have changed the screen. Nothing is pushed on a timer.
 - Native `<input type="date">` segments and web content behind a cross-origin
   picker are not reachable by AX alone.
-- No audit log or automatic screenshot after every action. Request
-  `screenshot` or `include_screenshot` for visual verification. Oxide can keep
-  the last returned image visible; the runtime does not stream the screen.
-- The app policy and its approval commands are the server-side half of Codex's
-  per-app Allow / Always allow / revoke model, and the hosting app is refused
-  unless `apps self-automation allow` says otherwise. A client-side settings UI,
-  the built-in browser, native @App selection, and automatic unlock/display
-  covering are not part of this repository.
-- The optional helper adds no isolated background input, streaming preview or
-  system-wide overlay. See the [parity record](docs/parity.md) and the
-  [integration limits](docs/oxide-helper.md).
+- No audit log or automatic screenshot after every action. Request `screenshot`
+  or `include_screenshot` for visual verification.
 
 ## License
 

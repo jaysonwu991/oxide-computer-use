@@ -11,7 +11,10 @@ Oxide's window: the client half lives in the Oxide checkout.
 
 The reference product is Codex/ChatGPT Computer Use as its
 [public documentation](https://learn.chatgpt.com/docs/computer-use) describes it;
-its private runtime is in neither repository.
+its private runtime is in neither repository. The README carries the short
+version for someone deciding whether to use this server —
+[what is different from Codex Computer Use](../README.md#what-is-different-from-codex-computer-use)
+and [how to work with Oxide Desktop](../README.md#use-it-with-oxide-desktop).
 
 ## 1. Input and takeover
 
@@ -139,20 +142,23 @@ installer/update integration, stable signing/grants across updates.*
 visual UI QA, helper-crash recovery, user takeover, other CPU and OS versions,
 Windows runtime support.*
 
-Everything written on this page that touches the GUI is compiled and unit-tested
-but was **not** exercised on a granted machine:
+Everything written on this page that touches the GUI is compiled and unit-tested.
+The rows below say which paths an ungranted machine could still prove — the
+window server, a live bundle identity, and the read bound the system accepts —
+and which need a grant, a second machine or a client:
 
 | Behaviour | Status |
 | --- | --- |
 | Permission prompts and System Settings entries | Unverified; the developer machine has neither grant, so `doctor` reports both missing. |
-| A live bundle identity from a running app | Unverified end to end; the pure path/bundle logic and the missing-bundle path are tested. |
+| A live bundle identity from a running app | **Measured without a grant:** `verify` printed `bundle identity ok: com.tencent.tenvideo at /Applications/QQLive.app`, resolving a running pid's identifier and bundle path. The pure path/bundle logic and the missing-bundle path stay unit-tested. |
+| A read from an app that stops answering | Half measured: `verify` printed `read bound ok: 2 seconds per message accepted for pid 5424`, so the system takes the bound this backend sets on every app element. That a wedged app then fails the call instead of returning an empty tree still needs the grant and a stopped app (recipe in [development](development.md#manual-smoke-checklist)). |
 | The takeover tap's callback | The tap installs on an ungranted machine (measured), but whether it receives a person's events needs one; the tests cover the comparison and the mask, and `verify` reports the install. |
 | Background delivery (`CGEventPostToPid`) | Unverified; the argument handling and the reply are tested, but whether a given app accepts posted-to-pid keys needs the grant and a list of apps. |
 | The screen resource | The protocol path is tested end to end (list, read, subscribe, notification); the capture itself needs Screen Recording, so a read here returns the permission error. |
 | Refusing the hosting app | Unverified end to end; the comparison is unit-tested, but a real hosting bundle needs a client that launches the server as a child of an `.app`. |
 | Granted screenshots and synthetic input | Unverified; every path here fails with the permission error on an ungranted machine. |
 | Visual UI QA of any reply | Not done. |
-| Helper-crash recovery and user takeover in the helper | Not covered by this repository. |
+| Helper-crash recovery and user takeover in the helper | User takeover is implemented here (§1). Recovery is split between the two sides: a tool call that panics is answered as an `isError` result and the loop keeps serving (unit-tested), and a read from an app that stops answering fails after the messaging timeout rather than rendering an empty window. A server process that is *killed* is still the client's to restart — nothing in this repository supervises it. |
 | Other CPU, macOS and display configurations | Only the Apple Silicon build on the development machine was run; CI compiles both architectures. |
 | Windows runtime | Absent by design: another platform builds the same tool list over a stub that returns an explicit "not implemented here" error. |
 

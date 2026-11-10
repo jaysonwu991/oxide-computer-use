@@ -4,6 +4,11 @@ Oxide now has an opt-in development companion app, **Oxide Computer Use**, in
 its Desktop source tree. The standalone runtime in this repository remains a
 Rust stdio MCP server. This repository's installer does not yet ship the helper.
 
+The README covers the shared setup — the grant to Oxide.app, the two gates, the
+preview and stop controls — under
+[Use it with Oxide Desktop](../README.md#use-it-with-oxide-desktop). This page is
+what changes when the helper is the host instead of the standalone runtime.
+
 ## Build and connect
 
 In an Oxide checkout containing `crates/desktop/computer-use`, use a built copy

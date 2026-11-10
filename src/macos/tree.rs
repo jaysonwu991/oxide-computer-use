@@ -1,5 +1,7 @@
 //! Accessibility tree snapshots: a flat, indexable rendering of an app's UI.
 
+use anyhow::{Context, Result};
+
 use super::ax::{CGPoint, Element};
 use super::cf;
 
@@ -114,11 +116,13 @@ fn walk(
     limits: &Limits,
     window: Option<&Element>,
     out: &mut Vec<Node>,
-) -> bool {
+) -> Result<bool> {
     if out.len() >= limits.max_nodes || depth > limits.max_depth {
-        return false;
+        return Ok(false);
     }
-    let children = element.elements_attribute("AXChildren");
+    let children = element
+        .elements_checked("AXChildren")
+        .with_context(|| format!("reading the tree stopped after {} element(s)", out.len()))?;
     let role = element.role();
     let center = element.center();
     let flat = FLAT_ROLES.contains(&role.as_str());
@@ -146,22 +150,22 @@ fn walk(
     let mut complete = true;
     for child in children {
         if out.len() >= limits.max_nodes {
-            return false;
+            return Ok(false);
         }
-        if !walk(&child, depth + 1, limits, bound.as_ref(), out) {
+        if !walk(&child, depth + 1, limits, bound.as_ref(), out)? {
             complete = false;
         }
     }
-    complete
+    Ok(complete)
 }
 
-pub fn snapshot(app: &Element, limits: &Limits, window: Option<&Element>) -> Snapshot {
+pub fn snapshot(app: &Element, limits: &Limits, window: Option<&Element>) -> Result<Snapshot> {
     let mut nodes = Vec::new();
-    let complete = walk(app, 0, limits, window, &mut nodes);
-    Snapshot {
+    let complete = walk(app, 0, limits, window, &mut nodes)?;
+    Ok(Snapshot {
         nodes,
         truncated: !complete,
-    }
+    })
 }
 
 pub fn render(nodes: &[Node]) -> String {

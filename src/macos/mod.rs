@@ -194,6 +194,23 @@ fn describe_windows(windows: &[Element]) -> String {
     described.join(", ")
 }
 
+/// One snapshot, or an error that leaves the previous one in place. An app that
+/// stops answering must not render as an empty window, and its old indexes must
+/// keep pointing at the app they were read from.
+fn snapshot(
+    app: &apps::App,
+    root: &Element,
+    limits: &Limits,
+    window: Option<&Element>,
+) -> Result<Snapshot> {
+    tree::snapshot(root, limits, window).map_err(|error| {
+        anyhow!(
+            "could not read {}'s accessibility tree: {error:#}. The read was abandoned, so the newest snapshot is still the previous one and its element indexes still address the app they came from. Retry once the app answers",
+            app.name
+        )
+    })
+}
+
 impl Runtime {
     pub fn new() -> Self {
         Runtime::default()
@@ -282,7 +299,11 @@ impl Runtime {
         let Some(spec) = spec else {
             return Ok(None);
         };
-        let windows = app_element.elements_attribute("AXWindows");
+        let windows = app_element.elements_checked("AXWindows").map_err(|error| {
+            anyhow!(
+                "could not read this app's window list: {error:#}; retry once the app answers, or call get_app_state without `window`"
+            )
+        })?;
         if windows.is_empty() {
             bail!("this app exposes no window to select; call get_app_state without `window`");
         }
@@ -432,7 +453,7 @@ impl Runtime {
         }
         limits.include_frames = bool_arg(args, "include_frames");
 
-        let snapshot = tree::snapshot(root, &limits, scoped.as_ref());
+        let snapshot = snapshot(&app, root, &limits, scoped.as_ref())?;
         let body = tree::render(&snapshot.nodes);
         let truncated = snapshot.truncated;
         let count = snapshot.nodes.len();
@@ -532,7 +553,7 @@ impl Runtime {
         if let Some(value) = usize_arg(args, "max_tree_nodes") {
             limits.max_nodes = value;
         }
-        let snapshot = tree::snapshot(root, &limits, scoped.as_ref());
+        let snapshot = snapshot(&app, root, &limits, scoped.as_ref())?;
         let needle = string_arg(args, "text").map(|text| text.to_lowercase());
         let role = string_arg(args, "role").map(|role| role.to_uppercase());
         let limit = usize_arg(args, "max_results").unwrap_or(20);

@@ -77,7 +77,7 @@ pub fn specs() -> Value {
                 "max_output_chars": { "type": "integer", "description": MAX_OUTPUT }
             }),
             &["app"],
-            "Read one app's accessibility tree as indexed lines. Element indexes from the newest snapshot are what click, set_value, select_text, perform_secondary_action, drag and scroll take, and they are bound to the window they came from. This is the GUI element listing behind every later click or type.",
+            "Read one app's accessibility tree as indexed lines. Element indexes from the newest snapshot are what click, set_value, select_text, perform_secondary_action, drag and scroll take, and they are bound to the window they came from. This is the GUI element listing behind every later click or type. An app that stops answering fails the read within a two-second bound instead of returning an empty tree, and the previous snapshot stays addressable.",
             "get_app_state"
         ),
         readonly(

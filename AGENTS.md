@@ -63,6 +63,11 @@ app's accessibility tree, and the actions that drive it.
   event), because the two behave differently for a background app.
 - A write is verified: `set_value` refuses a non-settable element and reads the
   value back. Nothing reports success it did not observe.
+- A wait is bounded and a broken call is answered. One accessibility message
+  gives an app two seconds (`ax::MESSAGING_TIMEOUT_SECONDS`); a read that misses
+  it fails as an error and leaves the newest snapshot addressable, because an
+  unresponsive app must not look like an empty window. A panic inside a call is
+  an `isError` result (`mcp::contained`), not the end of the session.
 - Policy first, permission second. `apps deny` answers before the Accessibility
   check, so a refusal is about the app, not about setup. A refusal names the
   command that changes it, and never prompts.

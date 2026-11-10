@@ -49,7 +49,7 @@ Computer Use under the plain `computer-use` name; the tool names are identical e
 - `query` replaces a full tree dump when you know what you are looking for.
 - `text_limit: "max"` is for the one field you must read in full; the default
   truncates long values with their true length.
-- Screenshots are never attached unless you ask. For visual review, capture the target window and return its image to the client; Oxide Desktop shows a clickable preview. Re-observe after changes and leave submission to the user when requested. Keyboard and pointer tools use the foreground; do not promise isolated background control.
+- Screenshots are never attached unless you ask. For visual review, capture the target window and return its image to the client; Oxide Desktop shows a clickable preview. Re-observe after changes and leave submission to the user when requested. Pointer tools use the foreground; `type_text` and `press_key` with `background: true` post to one app without activating it, and the reply asks for verification because an app may ignore them. Do not promise isolated input beyond that.
 
 ## Failures worth reading
 
@@ -75,6 +75,10 @@ Computer Use under the plain `computer-use` name; the tool names are identical e
   Settings → Privacy & Security → Accessibility, then restart the host. Do not approve permissions yourself.
 - `kAXErrorCannotComplete` — the app is busy, modal, or unresponsive. Wait, then
   read the tree again rather than repeating the click.
+- `could not read … accessibility tree` — the app stopped answering within the
+  two-second bound, so the read failed instead of returning an empty tree. The
+  previous snapshot is still the newest one and its indexes still address that
+  app; retry once the app answers instead of renumbering by guess.
 - `is no longer in the window the snapshot bound it to` or `out of range` — call
   `get_app_state` before retrying; the index no longer points at what you saw.
 - `reports AXValue as not settable` — use `click` to focus it and `type_text`

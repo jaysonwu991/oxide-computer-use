@@ -30,6 +30,13 @@ const AX_VALUE_CG_POINT: u32 = 1;
 const AX_VALUE_CG_SIZE: u32 = 2;
 const AX_VALUE_CF_RANGE: u32 = 4;
 
+/// How long one accessibility message may wait for the app to answer. The
+/// timeout belongs to the application element and reaches every element it hands
+/// out, so a busy or modal app fails the read instead of blocking the stdio loop
+/// — and every later call behind it. Two seconds is far more than a healthy read
+/// needs and far less than a person waits before giving up.
+pub const MESSAGING_TIMEOUT_SECONDS: f32 = 2.0;
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct CFRange {
@@ -52,6 +59,7 @@ extern "C" {
         parameter: CFTypeRef,
         value: *mut CFTypeRef,
     ) -> i32;
+    fn AXUIElementSetMessagingTimeout(element: AXUIElementRef, timeout_seconds: f32) -> i32;
     fn AXUIElementIsAttributeSettable(
         element: AXUIElementRef,
         attribute: CFTypeRef,
@@ -89,13 +97,27 @@ pub fn error_text(code: i32) -> String {
         _ => "kAXErrorUnknown",
     };
     let hint = match code {
-        -25204 => " (the app did not answer; it may be busy, modal, or unresponsive)",
-        -25211 => " (Accessibility permission is missing for the calling terminal)",
-        -25202 | -25212 => " (the element changed since the snapshot; call get_app_state again)",
-        -25205 | -25206 => " (the target does not support this attribute or action)",
-        _ => "",
+        -25204 => format!(
+            " (the app did not answer within {} seconds; it may be busy, showing a modal sheet, or unresponsive)",
+            MESSAGING_TIMEOUT_SECONDS as u64
+        ),
+        -25211 => " (Accessibility permission is missing for the calling terminal)".to_string(),
+        -25202 | -25212 => {
+            " (the element changed since the snapshot; call get_app_state again)".to_string()
+        }
+        -25205 | -25206 => " (the target does not support this attribute or action)".to_string(),
+        _ => String::new(),
     };
     format!("{name} ({code}){hint}")
+}
+
+/// A code that makes the read itself untrustworthy: the app stopped answering,
+/// or Accessibility went away mid-call. Everything else — an attribute the
+/// element does not support, no value, an element that went away while the tree
+/// was being walked — is this element having nothing to give, which the walk
+/// tolerates as a leaf.
+fn fatal_read(code: i32) -> bool {
+    matches!(code, -25204 | -25211)
 }
 
 fn check(code: i32, what: &str) -> Result<()> {
@@ -156,14 +178,24 @@ impl Element {
     }
 
     pub fn attribute(&self, name: &str) -> Option<cf::Owned> {
+        self.attribute_checked(name).ok().flatten()
+    }
+
+    /// A read that keeps the difference between "this attribute is absent" and
+    /// "the app did not answer": an unresponsive app must fail the call, not
+    /// render as an empty window.
+    pub fn attribute_checked(&self, name: &str) -> Result<Option<cf::Owned>> {
         unsafe {
-            let key = cf::string(name)?;
+            let key = cf::string(name).ok_or_else(|| anyhow!("unknown attribute `{name}`"))?;
             let mut value: CFTypeRef = std::ptr::null();
             let code = AXUIElementCopyAttributeValue(self.raw, key.raw(), &mut value);
-            if code != 0 {
-                return None;
+            if code == 0 {
+                return Ok(cf::Owned::from_create(value));
             }
-            cf::Owned::from_create(value)
+            if fatal_read(code) {
+                bail!("reading {name} failed: {}", error_text(code));
+            }
+            Ok(None)
         }
     }
 
@@ -178,16 +210,20 @@ impl Element {
     }
 
     pub fn elements_attribute(&self, name: &str) -> Vec<Element> {
-        let Some(value) = self.attribute(name) else {
-            return Vec::new();
+        self.elements_checked(name).unwrap_or_default()
+    }
+
+    pub fn elements_checked(&self, name: &str) -> Result<Vec<Element>> {
+        let Some(value) = self.attribute_checked(name)? else {
+            return Ok(Vec::new());
         };
         unsafe {
             if cf::type_id(value.raw()) != core_foundation_sys::array::CFArrayGetTypeID() {
-                return Vec::new();
+                return Ok(Vec::new());
             }
             let array = value.raw() as CFArrayRef;
             let count = CFArrayGetCount(array);
-            (0..count)
+            Ok((0..count)
                 .filter_map(|index| {
                     let item = CFArrayGetValueAtIndex(array, index);
                     if item.is_null() {
@@ -196,7 +232,7 @@ impl Element {
                         Element::from_get(item as CFTypeRef)
                     }
                 })
-                .collect()
+                .collect())
         }
     }
 
@@ -439,6 +475,56 @@ impl Drop for Element {
 pub fn application(pid: i32) -> Option<Element> {
     unsafe {
         let raw = AXUIElementCreateApplication(pid);
-        cf::Owned::from_create(raw).map(Element::from_owned)
+        let element = cf::Owned::from_create(raw).map(Element::from_owned)?;
+        // Bounded here, once: the application element's timeout reaches every
+        // element derived from it, so no read of this app can wait forever.
+        apply_messaging_timeout(&element);
+        Some(element)
+    }
+}
+
+fn apply_messaging_timeout(element: &Element) -> i32 {
+    unsafe { AXUIElementSetMessagingTimeout(element.raw, MESSAGING_TIMEOUT_SECONDS) }
+}
+
+/// Evidence for `verify`: the system accepted the read bound for this app. The
+/// reads themselves still need the Accessibility grant.
+pub fn read_bound(pid: i32) -> Result<String> {
+    let element = application(pid)
+        .ok_or_else(|| anyhow!("could not create an accessibility element for pid {pid}"))?;
+    let code = apply_messaging_timeout(&element);
+    if code != 0 {
+        bail!(
+            "the system refused a {} second read bound: {}",
+            MESSAGING_TIMEOUT_SECONDS as u64,
+            error_text(code)
+        );
+    }
+    Ok(format!(
+        "{} seconds per message accepted for pid {pid}; an app that stops answering fails the call instead of blocking the server",
+        MESSAGING_TIMEOUT_SECONDS as u64
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_a_read_the_app_never_answered_is_fatal() {
+        assert!(fatal_read(-25204));
+        assert!(fatal_read(-25211));
+        assert!(!fatal_read(-25205), "an unsupported attribute is absent");
+        assert!(!fatal_read(-25202), "an element that went away is a leaf");
+    }
+
+    #[test]
+    fn the_timeout_error_names_the_bound_it_hit() {
+        let text = error_text(-25204);
+        assert!(text.contains("did not answer"), "{text}");
+        assert!(
+            text.contains(&format!("{} seconds", MESSAGING_TIMEOUT_SECONDS as u64)),
+            "{text}"
+        );
     }
 }

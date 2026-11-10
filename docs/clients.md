@@ -32,6 +32,10 @@ oxide mcp list          # oxide-reins … Connected
 is on `PATH`. Oxide's approval rules cover tool calls. With this direct stdio
 setup, Desktop normally hosts the runtime under Oxide.app; check `permissions`
 through that actual MCP connection rather than diagnosing from another terminal.
+The README's [Use it with Oxide Desktop](../README.md#use-it-with-oxide-desktop)
+walks the same setup in order — the grant goes to Oxide.app, the app policy is
+the only per-app gate, and Oxide's own window is refused as a target until
+`apps self-automation allow`.
 
 Newer Oxide Desktop builds show a mouse activity glyph, the last returned
 screenshot in the details dock, a compact-window dialog and **Stop task**.
@@ -42,8 +46,13 @@ For a separate native app and permission identity, use the opt-in
 [Oxide Computer Use helper](oxide-helper.md). Register its executable with
 `--mcp`; `oxide-reins install --client oxide` still selects the standalone
 runtime and does not install or switch to the helper. Existing macOS grants to
-Oxide.app do not grant the helper access. Neither setup provides Codex's isolated
-background keyboard/pointer input or its per-app approval/settings interface.
+Oxide.app do not grant the helper access. Neither setup gives Codex's isolated
+pointer input or its per-app approval/settings interface; keys can be delivered
+to one app without activating it (`background: true`) but an app may ignore them.
+The README's
+[Codex comparison](../README.md#what-is-different-from-codex-computer-use) and
+[parity.md](parity.md) say which of those are runtime work and which are client
+windows.
 
 ## Claude Code
 

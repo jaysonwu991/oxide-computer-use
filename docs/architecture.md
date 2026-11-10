@@ -47,7 +47,8 @@ flowchart TD
    notification and gets no answer.
 2. **Dispatch** (`tools.rs`) — `tools/call` looks up the tool name and passes the
    arguments object to `Runtime`. An unknown name becomes an `isError` result,
-   not a protocol error.
+   not a protocol error. A call that panics is answered the same way (`contained`
+   in `mcp.rs`), so one broken call does not end the connection.
 3. **Resolution** (`macos/mod.rs`) — `app` becomes a running app: pid, exact
    name, then case-insensitive substring over every window owner, helpers
    included.
@@ -60,7 +61,8 @@ flowchart TD
 6. **Observe** (`tree.rs`) — the app element (or one window element) is walked
    breadth-first through `AXChildren` up to the node and depth budget. Each node
    records its element handle, role, rendered line, on-screen center and owning
-   `AXWindow`.
+   `AXWindow`. A read an app never answers fails after the messaging timeout
+   (`ax::MESSAGING_TIMEOUT_SECONDS`) instead of being read as an empty tree.
 7. **Act** (`macos/mod.rs` → `ax` / `input`) — accessibility first; pointer
    events only where AX has no equivalent.
 8. **Verify** — writes and selections are read back; actions that cannot be
@@ -148,15 +150,18 @@ one does not.
 - Framing: one JSON packet per line on stdout, flushed after each write. stdout
   carries protocol only; nothing else is printed, which keeps a client's parser
   safe. Diagnostics from the CLI go to stderr.
-- Methods: `initialize`, `ping`, `tools/list`, `tools/call`. Notifications
+- Methods: `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`,
+  `resources/read`, `resources/subscribe`, `resources/unsubscribe`. Notifications
   (`notifications/initialized`, `notifications/cancelled`) are accepted and not
   answered. Anything else returns `-32601`.
 - Revisions: the server answers `2025-06-18`, `2025-03-26` and `2024-11-05`, and
   echoes whichever the client asked for when it is one of them; an unknown
   revision gets the newest. Echoing matters because clients reject a revision
   they did not request.
-- Capabilities: tools only, `listChanged: false`. No resources, prompts or
-  sampling are advertised, so a client never calls those methods.
+- Capabilities: tools (`listChanged: false`) and resources (`subscribe: true`).
+  The one resource is `computer-use://screen`, a fresh capture; a subscriber is
+  told after any call that could have changed it. No prompts or sampling are
+  advertised, so a client never calls those methods.
 - Approvals: the client decides. This server only supplies `readOnlyHint`,
   `destructiveHint` and `idempotentHint`, plus its own app policy.
 
@@ -190,5 +195,7 @@ build fails loudly instead of pretending.
 - No network access, no telemetry, no image analysis or OCR.
 - No background watchers: nothing happens between calls.
 - No concurrency: a long AX call blocks the next request, which keeps index
-  semantics simple and predictable.
+  semantics simple and predictable. A call that never returns at all is bounded
+  instead of blocking forever: one accessibility message waits two seconds for
+  the app, then the call fails and reports why.
 - No UI: `doctor`, `--prompt` and the config files are the whole surface.

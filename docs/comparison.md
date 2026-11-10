@@ -3,7 +3,10 @@
 This repository supplies a macOS MCP runtime with explicit action semantics and
 client registration. Oxide's Desktop repository additionally provides an opt-in
 [native companion app](oxide-helper.md). A bundle and a mouse icon do not make
-its behavior identical to Codex Computer Use.
+its behavior identical to Codex Computer Use; the README's
+[Codex comparison](../README.md#what-is-different-from-codex-computer-use) lists
+what belongs to the client, what this runtime now matches and what is absent with
+its reason, and [parity.md](parity.md) has the per-item record.
 
 The Codex-specific statements below were checked against the
 [official Computer Use documentation](https://learn.chatgpt.com/docs/computer-use)
@@ -19,6 +22,8 @@ linked reports, not a fresh verification of every third-party release.
 | Observation | accessibility tree, indexes bound to the window they came from | accessibility tree; screenshot embedded in every state by default | screenshots plus accessibility |
 | Value writes | refused unless the element reports `AXValue` settable, then read back | reported success on controls that ignored the write ([#83](https://github.com/iFurySt/open-computer-use/issues/83)) | n/a |
 | Stale indexes | rejected by name, with the app and window they belong to | not detected | n/a |
+| An app that stops answering | the read fails inside a two-second messaging bound; the previous snapshot stays addressable | not detected | n/a |
+| A call that breaks | answered as an `isError` result; the connection keeps serving | n/a | n/a |
 | Long text | per-value `text_limit` (`"max"` allowed), explicit truncation notes | fixed truncation per platform ([#36](https://github.com/iFurySt/open-computer-use/issues/36)) | n/a |
 | Reply size | `max_output_chars` cap, screenshot opt-in per call | screenshot in every reply ([#83](https://github.com/iFurySt/open-computer-use/issues/83) 6a) | n/a |
 | Per-app control | deny/allow lists enforced in the server, before any AX call | configurable allow list ([#12](https://github.com/iFurySt/open-computer-use/issues/12)) | product approvals |
@@ -31,8 +36,10 @@ linked reports, not a fresh verification of every third-party release.
 - **Accessibility first, pointer second.** A left `click` uses the element's
   `AXPress` action when available, allowing supported controls to work without
   foreground input. Other buttons and coordinate clicks use pointer events and
-  activate the app. The reply names the path; this is not isolated background
-  keyboard/pointer control.
+  activate the app. The reply names the path. Pointer input is never isolated
+  from the person — the real cursor moves and the app is activated — while the
+  keyboard does have a `background` delivery path that leaves the frontmost app
+  alone.
 - **Refusals instead of silent no-ops.** `set_value` checks `AXIsAttributeSettable`
   and reads the value back; `perform_secondary_action` refuses an action the
   element does not list. An agent can tell "nothing happened" from "it worked".
@@ -43,6 +50,10 @@ linked reports, not a fresh verification of every third-party release.
 - **Elements belong to a window.** A snapshot binds each index to its
   `AXWindow`; an index from before a window closed or moved is refused rather
   than applied to whatever is now at that position.
+- **A wait is bounded and a broken call is answered.** An app that stops
+  answering fails the read within two seconds and does not render as an empty
+  window; a panic inside one call becomes an `isError` result instead of ending
+  the session. A server process that is killed is still the client's to restart.
 - **One tool list, one test.** `tools::tests` counts the tool specs, and the
   README table, the `tools` command and `tools/list` all come from it, so the
   documented surface cannot drift from the shipped one.
@@ -57,8 +68,10 @@ linked reports, not a fresh verification of every third-party release.
   [#51](https://github.com/iFurySt/open-computer-use/issues/51)).
 - **You want a ready-to-install native product.** The standalone server has no UI.
   Oxide's helper adds a native permission/stop menu and Desktop adds activity and
-  snapshot controls, but they remain an opt-in development workflow. App-specific
-  approval settings, continuous preview and isolated input are still missing.
+  snapshot controls, but they remain an opt-in development workflow. Client-side
+  app approval settings, continuous preview and isolated pointer input are still
+  missing; keys can be posted to one app with `background: true`, which is the half
+  of isolated input a stdio server can offer.
 - **You want a signed, notarised download.** This project publishes unsigned
   archives built in CI from a tag, with a shell installer; the others ship a
   signed app bundle or an npm package.
