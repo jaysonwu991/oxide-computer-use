@@ -25,16 +25,17 @@ flowchart TD
 | Module | Responsibility | Unsafe |
 | --- | --- | --- |
 | `src/main.rs` | CLI: `mcp`, `call`, `tools`, `doctor`, `install`, `apps`. Parses arguments, prints MCP-shaped results, sets exit codes. | no |
-| `src/mcp.rs` | stdio transport: read a line, answer one request, flush. Version negotiation and the method table. | no |
+| `src/mcp.rs` | stdio transport: read a line, answer one request, flush. Version negotiation, the method table, and the `computer-use://screen` resource with its subscription notifications. | no |
 | `src/tools.rs` | The single tool list: schemas, annotations, dispatch to `Runtime`, and the `content`/`isError` shape. | no |
 | `src/install.rs` | Writes each client's config: JSON via `serde_json`, Codex's TOML via `toml_edit` (round-trip, comments kept), atomic rename; refuses a name the client already uses. | no |
-| `src/policy.rs` | Loads, checks and edits the app allow/deny list. | no |
+| `src/policy.rs` | Per-app approvals: the deny list, the allow list, bundle identities pinned to an approval, one-call approvals, the default policy. Re-reads the file on every call. | no |
 | `src/runtime.rs` | Picks the backend. macOS is real; other platforms get a stub whose every method returns an error, so the tool list stays identical. | no |
 | `src/macos/mod.rs` | `Runtime`: resolve app, guard permissions, snapshot, act, verify. | no |
 | `src/macos/ax.rs` | `AXUIElement` wrapper: attributes, actions, settability, text ranges, trust. | yes |
 | `src/macos/tree.rs` | Renders the tree, numbers it, binds each node to its `AXWindow`, truncates explicitly. | no |
-| `src/macos/apps.rs` | `CGWindowListCopyWindowInfo` app and window enumeration, screen-recording preflight. | yes |
-| `src/macos/input.rs` | Pointer, keyboard and scroll events from a private HID event source, paced. | yes |
+| `src/macos/apps.rs` | `CGWindowListCopyWindowInfo` app and window enumeration, screen-recording preflight, and a process's bundle identity via `proc_pidpath` and `CFBundleGetIdentifier`. | yes |
+| `src/macos/input.rs` | Pointer, keyboard and scroll events from a private HID event source, paced, and the text/key decoding a model's arguments need. | yes |
+| `src/macos/takeover.rs` | A listen-only `CGEventTap` that separates a person's input from events this process posted, so a paced gesture can yield. | yes |
 | `src/macos/screen.rs` | `screencapture` invocation, temp file handling, empty-image detection. | no |
 | `src/macos/cf.rs` | Core Foundation ownership: `Owned` handles, string/number/boolean/data bridging. | yes |
 
@@ -111,9 +112,25 @@ therefore:
 - sets the click state on the press, so a double-click consumer sees a real
   click rather than a bare down/up pair.
 
-Keyboard input uses key codes for named keys and a UTF-16 string on a single
-event pair for `type_text`, which reaches the app's key handling instead of the
-pasteboard.
+Keyboard input uses key codes for named keys and a UTF-16 string per line for
+`type_text`, which reaches the app's key handling instead of the pasteboard; a
+newline in the text is pressed as `Return` because an app that receives one
+inside a keyboard event usually inserts nothing.
+
+A gesture also yields. `takeover.rs` installs a listen-only session event tap
+before a drag or a multi-line type and reads it between steps. Every event this
+runtime posts carries its own process id as the source, and a person's hardware
+input does not, so one comparison in the tap callback separates the two. The
+first keystroke, pointer movement or scroll from anyone else releases what is
+held and fails the call with `user takeover`, rather than fighting the pointer.
+Without the Accessibility grant the tap cannot be installed and a gesture runs
+without that arbitration.
+
+`type_text` and `press_key` take `background`, which aims the same events at one
+process with `CGEventPostToPid` instead of the HID tap: the app is not activated
+and the person keeps the keyboard focus. Nothing else about the events changes,
+so an app that ignores posted-to-pid keys ignores them here too — which is why
+the reply names the delivery path and asks for verification.
 
 ## Window binding
 

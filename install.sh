@@ -97,19 +97,26 @@ resolve_archive() {
     printf '%s/latest/download/%s\n' "$RELEASES" "$asset"
 }
 
+sha256_of() {
+    file="$1"
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$file" | cut -d' ' -f1
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$file" | cut -d' ' -f1
+    elif command -v openssl >/dev/null 2>&1; then
+        openssl dgst -sha256 "$file" | sed 's/^.*= //'
+    else
+        return 1
+    fi
+}
+
 verify_checksum() {
     file="$1"
     sums="$2"
     expected="$(cut -d' ' -f1 < "$sums" | head -n1)"
     [ -n "$expected" ] || return 0
 
-    if command -v sha256sum >/dev/null 2>&1; then
-        actual="$(sha256sum "$file" | cut -d' ' -f1)"
-    elif command -v shasum >/dev/null 2>&1; then
-        actual="$(shasum -a 256 "$file" | cut -d' ' -f1)"
-    elif command -v openssl >/dev/null 2>&1; then
-        actual="$(openssl dgst -sha256 "$file" | sed 's/^.*= //')"
-    else
+    if ! actual="$(sha256_of "$file")"; then
         warn "no sha256 tool found; skipping checksum verification"
         return 0
     fi
@@ -154,7 +161,10 @@ main() {
     # what is here rather than what was asked for.
     installed_version="$("${INSTALL_DIR}/${BINARY_NAME}" --version 2>/dev/null | awk '{print $2}')" \
         || installed_version=""
-    printf 'source %s\nversion %s\n' "$REPO" "$installed_version" \
+    installed_sha="$(sha256_of "${INSTALL_DIR}/${BINARY_NAME}" 2>/dev/null)" \
+        || installed_sha=""
+    printf 'source %s\nversion %s\nplatform %s\nsha256 %s\n' \
+        "$REPO" "$installed_version" "$platform" "$installed_sha" \
         > "${INSTALL_DIR}/${MARKER_NAME}"
 
     info "installed ${BINARY_NAME} ${installed_version} to ${INSTALL_DIR}/${BINARY_NAME}"

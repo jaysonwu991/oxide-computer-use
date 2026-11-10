@@ -5,12 +5,13 @@ pub mod ax;
 pub mod cf;
 pub mod input;
 pub mod screen;
+pub mod takeover;
 pub mod tree;
 
 use anyhow::{anyhow, bail, Result};
 use serde_json::Value;
 
-use crate::policy::Policy;
+use crate::policy::{self, Policy};
 use crate::runtime::State;
 
 use ax::{CFRange, CGPoint, Element};
@@ -29,6 +30,9 @@ pub struct Runtime {
     nodes: Vec<Cached>,
     cached_app: Option<String>,
     policy: Policy,
+    /// The `.app` that launched this server, resolved once: it is the app a
+    /// self-automation rule may refuse to drive.
+    host: Option<String>,
 }
 
 impl Default for Runtime {
@@ -37,6 +41,7 @@ impl Default for Runtime {
             nodes: Vec::new(),
             cached_app: None,
             policy: Policy::load(),
+            host: crate::permissions::launching_app(),
         }
     }
 }
@@ -46,6 +51,55 @@ fn string_arg(args: &Value, key: &str) -> Option<String> {
         .and_then(Value::as_str)
         .map(str::to_string)
         .filter(|value| !value.trim().is_empty())
+}
+
+/// A model writes a newline as `\n` inside a tool call often enough that typing
+/// it literally is worth naming, so the next call uses a key instead.
+fn literal_escape_note(text: &str) -> Option<String> {
+    let escaped: Vec<&str> = ["\\n", "\\t", "\\r"]
+        .into_iter()
+        .filter(|sequence| text.contains(sequence))
+        .collect();
+    if escaped.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "The text contains {} as literal characters and they were typed as written. A real newline in `text` is sent as the Return key; `press_key` with Return or Tab moves between fields.",
+        escaped.join(", ")
+    ))
+}
+
+/// Whether the app being resolved is the bundle that hosts this server. An
+/// unreadable identity is not the host: refusing on a missing identity would
+/// block every unbundled app.
+fn drives_itself(host: Option<&str>, running: Option<&str>) -> bool {
+    match (host, running) {
+        (Some(host), Some(running)) => {
+            !running.is_empty() && running.trim_end_matches('/') == host.trim_end_matches('/')
+        }
+        _ => false,
+    }
+}
+
+fn describe_typing(typed: &input::Typed, text: &str) -> String {
+    let mut reply = format!(
+        "Typed {} characters{}.",
+        typed.characters,
+        match typed.line_breaks {
+            0 => String::new(),
+            1 => " and one line break with Return".to_string(),
+            count => format!(" and {count} line breaks with Return"),
+        }
+    );
+    if let Some(note) = literal_escape_note(text) {
+        reply.push_str(&format!("\n{note}"));
+    }
+    if let Some(kind) = typed.takeover {
+        reply.push_str(&format!(
+            "\n{kind} arrived from a person while typing, so the rest of the text was not sent. That is user takeover: leave the desktop to them and ask what is next."
+        ));
+    }
+    reply
 }
 
 fn required_app(args: &Value) -> Result<String> {
@@ -155,8 +209,45 @@ impl Runtime {
             };
             anyhow!("no running app matches `{name}`; {hint}")
         })?;
-        self.policy.check(&app.name)?;
+        let pid = app.pid;
+        self.policy.authorize(&app.name, || apps::identity(pid))?;
+        self.check_self_automation(&app)?;
         Ok(app)
+    }
+
+    /// Refuse to drive the window this server is hosted in: an agent clicking its
+    /// own transcript is a loop, and the policy can say so. Only the hosting
+    /// bundle matches, compared by path.
+    fn check_self_automation(&self, app: &apps::App) -> Result<()> {
+        if self.policy.self_automation() == policy::Fallback::Allow {
+            return Ok(());
+        }
+        let Some(host) = self.host.as_deref() else {
+            return Ok(());
+        };
+        let running = apps::identity(app.pid).map(|identity| identity.path);
+        if !drives_itself(Some(host), running.as_deref()) {
+            return Ok(());
+        }
+        bail!(
+            "`{}` is the app hosting this MCP server ({host}), and the policy refuses self-automation: clicking the window you are shown in loops. Name another app, or allow it with `oxide-reins apps self-automation allow`",
+            app.name
+        )
+    }
+
+    /// Only a decision pinned to a bundle identity is worth reading the running
+    /// app's identity for: the common path is a name match on an empty policy.
+    fn identity_for(&self, app: &apps::App) -> Option<policy::Identity> {
+        if self.policy.needs_identity(&app.name) {
+            apps::identity(app.pid)
+        } else {
+            None
+        }
+    }
+
+    fn access_marker(&self, app: &apps::App) -> &'static str {
+        let identity = self.identity_for(app);
+        self.policy.access(&app.name, identity.as_ref()).marker()
     }
 
     fn app_element(app: &apps::App) -> Result<Element> {
@@ -258,6 +349,7 @@ impl Runtime {
     }
 
     pub fn list_apps(&self, include_helpers: bool) -> Result<String> {
+        self.policy.reload();
         let mut lines = Vec::new();
         for app in apps::running_apps_with(include_helpers) {
             let windows: Vec<&apps::Window> = app
@@ -284,13 +376,9 @@ impl Runtime {
                     described.push(label);
                 }
             }
-            let policy = if self.policy.is_allowed(&app.name) {
-                String::new()
-            } else {
-                " [blocked by app policy]".to_string()
-            };
+            let marker = self.access_marker(&app);
             lines.push(format!(
-                "{} (pid {}) — {}{policy}",
+                "{} (pid {}) — {}{marker}",
                 app.name,
                 app.pid,
                 described.join(", ")
@@ -604,6 +692,8 @@ impl Runtime {
             .get("text")
             .and_then(Value::as_str)
             .ok_or_else(|| anyhow!("`text` is required"))?;
+        let background = bool_arg(args, "background");
+        let mut target: Option<apps::App> = None;
         match string_arg(args, "app") {
             Some(name) => {
                 let app = self.resolved(&name)?;
@@ -613,27 +703,76 @@ impl Runtime {
                         .element
                         .focus()?;
                 }
-                Self::app_element(&app)?.activate_app()?;
+                if background {
+                    target = Some(app);
+                } else {
+                    Self::app_element(&app)?.activate_app()?;
+                }
             }
-            None => self.guard()?,
+            None => {
+                if background {
+                    bail!("`background` needs `app`: the input is addressed to that process");
+                }
+                self.guard()?;
+            }
         }
-        input::type_text(text)?;
-        Ok(format!("Typed {} characters.", text.chars().count()))
+        let typed = match &target {
+            Some(app) => input::type_text_in(app.pid, text)?,
+            None => input::type_text(text)?,
+        };
+        let mut reply = describe_typing(&typed, text);
+        if let Some(app) = &target {
+            reply.push_str(&format!(
+                "\nDelivered to {} (pid {}) without activating it; an app that keeps its own key focus can ignore input sent this way, so verify with get_app_state.",
+                app.name, app.pid
+            ));
+        }
+        Ok(reply)
     }
 
     pub fn press_key(&mut self, args: &Value) -> Result<String> {
         let key = string_arg(args, "key").ok_or_else(|| anyhow!("`key` is required"))?;
         let modifiers = string_arg(args, "modifiers").unwrap_or_default();
+        input::check(&key, &modifiers)?;
+        let background = bool_arg(args, "background");
+        let mut target: Option<apps::App> = None;
         match string_arg(args, "app") {
             Some(name) => {
                 let app = self.resolved(&name)?;
                 self.guard()?;
-                Self::app_element(&app)?.activate_app()?;
+                if background {
+                    target = Some(app);
+                } else {
+                    Self::app_element(&app)?.activate_app()?;
+                }
             }
-            None => self.guard()?,
+            None => {
+                if background {
+                    bail!("`background` needs `app`: the input is addressed to that process");
+                }
+                self.guard()?;
+            }
         }
-        input::press(&key, &modifiers)?;
-        Ok(format!("Pressed {key}."))
+        let pressed = match &target {
+            Some(app) => input::press_in(app.pid, &key, &modifiers)?,
+            None => input::press(&key, &modifiers)?,
+        };
+        let spelling = match key.rsplit_once('+') {
+            Some((_, rest)) if !rest.is_empty() => rest.trim(),
+            _ => key.trim(),
+        };
+        let mut reply = if pressed == spelling {
+            format!("Pressed `{}`.", key.trim())
+        } else {
+            format!("Pressed `{pressed}` (for `{}`).", key.trim())
+        };
+        if let Some(app) = &target {
+            reply.push_str(&format!(
+                "\nDelivered to {} (pid {}) without activating it; an app that keeps its own key focus can ignore input sent this way, so verify with get_app_state.",
+                app.name, app.pid
+            ));
+        }
+        Ok(reply)
     }
 
     pub fn scroll(&mut self, args: &Value) -> Result<String> {
@@ -751,6 +890,54 @@ mod tests {
     fn a_missing_or_empty_needle_has_no_range() {
         assert!(find_range("hello", "bye").is_none());
         assert!(find_range("hello", "").is_none());
+    }
+
+    #[test]
+    fn only_the_hosting_bundle_counts_as_driving_itself() {
+        assert!(drives_itself(
+            Some("/Applications/Oxide.app"),
+            Some("/Applications/Oxide.app/")
+        ));
+        assert!(!drives_itself(
+            Some("/Applications/Oxide.app"),
+            Some("/Applications/TextEdit.app")
+        ));
+        assert!(!drives_itself(Some("/Applications/Oxide.app"), None));
+        assert!(!drives_itself(None, Some("/Applications/Oxide.app")));
+        assert!(!drives_itself(Some("/Applications/Oxide.app"), Some("")));
+    }
+
+    #[test]
+    fn a_reply_counts_the_line_breaks_that_were_sent() {
+        let typed = input::Typed {
+            characters: 7,
+            line_breaks: 0,
+            takeover: None,
+        };
+        assert_eq!(describe_typing(&typed, "a\nb"), "Typed 7 characters.");
+        let typed = input::Typed {
+            characters: 5,
+            line_breaks: 1,
+            takeover: None,
+        };
+        assert!(describe_typing(&typed, "x\ny").contains("one line break with Return"));
+        let typed = input::Typed {
+            characters: 5,
+            line_breaks: 2,
+            takeover: Some("a keystroke"),
+        };
+        let reply = describe_typing(&typed, "x\ny\nz");
+        assert!(reply.contains("2 line breaks"), "{reply}");
+        assert!(reply.contains("user takeover"), "{reply}");
+    }
+
+    #[test]
+    fn a_literal_escape_sequence_in_the_text_is_named() {
+        assert!(literal_escape_note("hello").is_none());
+        let note = literal_escape_note(r"first\nsecond").unwrap();
+        assert!(note.contains(r"\n"), "{note}");
+        assert!(note.contains("Return"), "{note}");
+        assert!(literal_escape_note(r"tab\there").is_some());
     }
 
     #[test]

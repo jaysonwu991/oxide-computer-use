@@ -7,7 +7,10 @@ app's accessibility tree, and the actions that drive it.
 
 - `src/main.rs`: the CLI (`mcp`, `call`, `tools`, `doctor`, `install`, `apps`).
 - `src/mcp.rs`: newline-delimited JSON-RPC over stdio; echoes the client's
-  protocol revision when it is one of the three we answer.
+  protocol revision when it is one of the three we answer. Publishes the
+  `computer-use://screen` resource; a subscriber gets
+  `notifications/resources/updated` after any call that could have changed the
+  screen.
 - `src/tools.rs`: the single source of the tool list. A tool's schema, its
   dispatch arm and its row in the README table are the same tool; adding one
   means changing all three, and `tools::tests` counts them.
@@ -16,15 +19,18 @@ app's accessibility tree, and the actions that drive it.
   other settings and comments survive.
 - `src/permissions.rs`: permission status in the MCP process, observed launching
   app bundle, and user-only setup guidance.
-- `src/policy.rs`: the app allow/deny list, enforced before any accessibility
-  call. A deny rule beats an allow list.
+- `src/policy.rs`: per-app approvals — allow, deny, allow-once, and the default
+  for an app nobody decided about — enforced before any accessibility call. An
+  approval can be pinned to a bundle identity, and the file is re-read on every
+  call so a decision reaches a running server.
 - `src/runtime.rs`: picks the backend. macOS is real; every other platform
   compiles to a stub whose methods return an explicit error, so the tool list
   stays identical.
 - `src/macos/`: `ax` (elements, actions, settability, text ranges), `tree`
-  (snapshot rendering, per-node window binding), `apps` (window server),
-  `input` (paced synthetic events from a private HID source), `screen`
-  (screenshot), `cf` (Core Foundation bridging).
+  (snapshot rendering, per-node window binding), `apps` (window server, bundle
+  identity), `input` (paced synthetic events from a private HID source, key and
+  text decoding), `takeover` (the listen-only tap that yields to a person),
+  `screen` (screenshot), `cf` (Core Foundation bridging).
 - `tests/cli.rs`: the binary as an MCP client sees it.
 - `install.sh`: the `curl | sh` installer. It reads `oxide-reins-manifest` from
   the latest release (or a pinned `OXIDE_REINS_VERSION`), verifies the
@@ -39,8 +45,9 @@ app's accessibility tree, and the actions that drive it.
   categories, the version rules and the autolabeler.
 - `docs/`: `install.md`, `tools.md` (the tool reference a test checks against
   `specs()`), `architecture.md`, `configuration.md`, `clients.md`,
-  `troubleshooting.md`, `development.md`, `comparison.md`, and `issues.md` (audit
-  against the open-computer-use tracker). A behaviour change updates the relevant
+  `troubleshooting.md`, `development.md`, `comparison.md`, `issues.md` (audit
+  against the open-computer-use tracker) and `parity.md` (each Codex Computer Use
+  follow-up from the Oxide Desktop review and its status here). A behaviour change updates the relevant
   page in the same commit; a new or renamed tool updates `docs/tools.md` and the
   README table, which `tools::tests` enforces.
 
@@ -54,7 +61,18 @@ app's accessibility tree, and the actions that drive it.
 - A write is verified: `set_value` refuses a non-settable element and reads the
   value back. Nothing reports success it did not observe.
 - Policy first, permission second. `apps deny` answers before the Accessibility
-  check, so a refusal is about the app, not about setup.
+  check, so a refusal is about the app, not about setup. A refusal names the
+  command that changes it, and never prompts.
+- A pinned approval is checked against the running app's bundle identity, and a
+  one-call approval is spent by the call that uses it. Do not weaken either into
+  a name-only match or a file that is read once per process.
+- A person's input wins: a paced gesture stops when input arrives from anything
+  but this process, and says so.
+- `background: true` posts keys to one process (`CGEventPostToPid`) instead of the
+  HID tap; it must never activate the app, and its reply must ask for
+  verification because an app may ignore delivered keys.
+- The hosting bundle is refused unless `apps self-automation allow` says
+  otherwise. Compare bundle paths; a missing identity is not the host.
 - Observations are cheap by default: no screenshot unless asked, an output cap
   that says it truncated, and `query` for large trees.
 - Tool failures are `isError` results with a message an agent can act on, not
@@ -84,7 +102,7 @@ app's accessibility tree, and the actions that drive it.
 - `./target/debug/oxide-reins doctor`
 - `./target/debug/oxide-reins call list_apps`
 - `./target/debug/oxide-reins install --client codex --print`
-- `./target/debug/oxide-reins apps list`
+- `./target/debug/oxide-reins apps list` (and `apps allow|deny|revoke|grant-once|policy|reset`)
 - `printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | ./target/debug/oxide-reins mcp`
 - `sh -n install.sh && ./scripts/set-version.sh v0.1.0` (the second rewrites `Cargo.toml`; revert it after)
 

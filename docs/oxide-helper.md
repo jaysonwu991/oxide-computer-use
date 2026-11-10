@@ -82,12 +82,32 @@ other platforms and release paths are not covered by it.
 Full Codex parity has **not** been achieved. The runtime still activates apps for
 keyboard/pointer events; AXPress and AXValue are its limited background paths.
 The helper does not add isolated input, continuous screen streaming, a system-wide
-cursor overlay, Codex's per-app Allow/Always allow/revoke settings, its built-in
-browser, or automatic unlock/relock behavior. The existing server allow/deny
-policy and Oxide's generic tool approvals continue to apply.
+cursor overlay, a settings pane, its built-in browser, or automatic
+unlock/relock behavior.
 
-See the Oxide checkout's `docs/computer-use-parity.md` for today's three-session
-review, evidence, verification results and outstanding behaviors. The
+What the server now provides to the helper is the approval half of that model:
+per-app approvals pinned to a bundle identity, a one-call approval, a default
+policy, `apps revoke` and a self-automation rule that refuses the hosting bundle,
+all re-read on every call so a decision made while a helper session runs takes
+effect without reconnecting ([configuration](configuration.md#app-policy)). The
+helper has no settings UI for it yet, and Oxide's generic tool approvals remain a
+separate gate.
+
+Input isolation is narrower than a separate desktop: `type_text` and `press_key`
+with `background: true` deliver keys to one process without activating it, while
+pointer events still move the real cursor. A preview can be current without a
+tool call — the `computer-use://screen` resource captures on read and a
+subscriber is told when a call may have changed the screen — but it is still
+pulled by the client, not pushed by the runtime.
+
+A gesture yields to the person: a drag or a long `type_text` stops when input
+arrives from anyone but this process, and says so. See
+[tools](tools.md#taking-over-from-the-agent).
+
+See `docs/parity.md` in this repository for each follow-up from the Oxide Desktop
+review and its status here, and the Oxide checkout's
+`docs/computer-use-parity.md` for the three-session review, evidence and
+verification results. The
 [official Codex/ChatGPT Computer Use documentation](https://learn.chatgpt.com/docs/computer-use)
 is the reference for the target product's public behavior; its private runtime
 is not part of either repository.

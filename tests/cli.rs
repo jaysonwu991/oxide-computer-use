@@ -286,6 +286,11 @@ fn a_codex_install_warns_about_an_entry_under_codex_computer_use_name() {
     std::fs::remove_dir_all(&home).ok();
 }
 
+fn config_of(home: &Path) -> Value {
+    let text = std::fs::read_to_string(home.join(".config/oxide-reins/config.json")).unwrap();
+    serde_json::from_str(&text).unwrap()
+}
+
 #[test]
 fn the_app_policy_round_trips_through_the_cli() {
     let home = temporary_home("policy");
@@ -294,20 +299,257 @@ fn the_app_policy_round_trips_through_the_cli() {
     assert!(stdout.contains("No app policy"), "{stdout}");
 
     let (stdout, _, ok) = run_with_home(&home, &["apps", "deny", "1Password"]);
-    assert!(ok);
-    assert!(stdout.contains("1Password"), "{stdout}");
+    assert!(ok, "{stdout}");
+    assert_eq!(config_of(&home)["denied_apps"], json!(["1Password"]));
 
     let (stdout, _, ok) = run_with_home(&home, &["apps", "list"]);
-    assert!(ok);
-    assert!(stdout.contains("Denied apps: 1Password"), "{stdout}");
+    assert!(ok, "{stdout}");
+    assert!(stdout.contains("Denied: 1Password"), "{stdout}");
+
+    let (_, stderr, ok) = run_with_home(&home, &["apps", "policy", "sometimes"]);
+    assert!(!ok, "an unknown policy is refused");
+    assert!(stderr.contains("allow"), "{stderr}");
+
+    let (stdout, _, ok) = run_with_home(&home, &["apps", "policy", "deny"]);
+    assert!(ok, "{stdout}");
+    assert_eq!(config_of(&home)["app_policy"], json!("deny"));
+    assert!(stdout.contains("default: deny"), "{stdout}");
+
+    let (stdout, _, ok) = run_with_home(&home, &["apps", "grant-once", "TextEdit"]);
+    assert!(ok, "{stdout}");
+    assert_eq!(config_of(&home)["one_time_grant"]["app"], json!("TextEdit"));
+
+    let (stdout, _, ok) = run_with_home(&home, &["apps", "revoke", "TextEdit"]);
+    assert!(ok, "{stdout}");
+    assert!(config_of(&home).get("one_time_grant").is_none(), "{stdout}");
+
+    let (stdout, _, ok) = run_with_home(&home, &["apps", "revoke", "1Password"]);
+    assert!(ok, "{stdout}");
+    assert!(stdout.contains("default policy again"), "{stdout}");
+    assert_eq!(config_of(&home)["denied_apps"], json!([]));
 
     let (_, _, ok) = run_with_home(&home, &["apps", "reset"]);
     assert!(ok);
-    let config: Value = serde_json::from_str(
-        &std::fs::read_to_string(home.join(".config/oxide-reins/config.json")).unwrap(),
+    let config = config_of(&home);
+    assert_eq!(config["denied_apps"], json!([]));
+    assert!(config.get("app_policy").is_none(), "{config}");
+
+    std::fs::remove_dir_all(&home).ok();
+}
+
+#[test]
+fn a_policy_file_that_does_not_parse_refuses_every_app() {
+    let home = temporary_home("policy-broken");
+    let path = home.join(".config/oxide-reins/config.json");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, "{ not json").unwrap();
+
+    let (stdout, _, ok) = run_with_home(&home, &["apps", "list"]);
+    assert!(ok, "{stdout}");
+    assert!(stdout.contains("Unreadable policy"), "{stdout}");
+
+    // `doctor` exits nonzero while a grant is missing; the JSON is still printed.
+    let (stdout, _, _) = run_with_home(&home, &["doctor", "--json"]);
+    let status: Value = serde_json::from_str(&stdout).unwrap();
+    assert!(
+        status["policy_error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("apps reset"),
+        "{status}"
+    );
+
+    std::fs::remove_dir_all(&home).ok();
+}
+
+#[test]
+fn doctor_reports_the_build_it_runs_and_the_installer_marker() {
+    let home = temporary_home("provenance");
+    let marker = home.join("bin/.oxide-reins-install");
+    std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+    std::fs::write(
+        &marker,
+        "source jaysonwu991/oxide-reins\nversion 0.1.0\narch darwin-arm64\n",
     )
     .unwrap();
-    assert_eq!(config["denied_apps"], json!([]));
+
+    let (stdout, _, _) = run_with_home(&home, &["doctor", "--json"]);
+    let status: Value = serde_json::from_str(&stdout).unwrap();
+    let build = &status["provenance"];
+    assert!(build["path"]
+        .as_str()
+        .unwrap_or_default()
+        .ends_with("oxide-reins"));
+    assert!(build["target"].as_str().unwrap_or_default().contains('-'));
+    assert!(matches!(
+        build["profile"].as_str(),
+        Some("debug") | Some("release")
+    ));
+    assert!(
+        build["install"].is_null(),
+        "the marker is read beside the running binary, not in HOME: {build}"
+    );
+
+    std::fs::remove_dir_all(&home).ok();
+}
+
+#[test]
+fn tools_json_prints_the_surface_an_agent_searches() {
+    let (stdout, stderr, ok) = run(&["tools", "--json"]);
+    assert!(ok, "{stderr}");
+    let specs: Value = serde_json::from_str(&stdout).unwrap();
+    let specs = specs.as_array().expect("tools --json prints an array");
+    assert_eq!(specs.len(), 13);
+    for tool in specs {
+        assert!(tool["name"].as_str().is_some_and(|name| !name.is_empty()));
+        let description = tool["description"].as_str().unwrap_or_default();
+        assert!(
+            description.to_lowercase().contains("gui")
+                || description.to_lowercase().contains("app")
+                || description.to_lowercase().contains("element"),
+            "{} has no app-facing words: {description}",
+            tool["name"]
+        );
+    }
+}
+
+#[test]
+fn a_subscribed_client_hears_that_the_screen_may_have_changed() {
+    let mut child = Command::new(binary())
+        .arg("mcp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("the MCP server starts");
+    let mut stdin = child.stdin.take().expect("stdin");
+    for request in [
+        json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18"}}),
+        json!({"jsonrpc": "2.0", "id": 2, "method": "resources/list"}),
+        json!({"jsonrpc": "2.0", "id": 3, "method": "resources/subscribe", "params": {"uri": "computer-use://screen"}}),
+        json!({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "permissions", "arguments": {}}}),
+        json!({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "click", "arguments": {"app": "TextEdit"}}}),
+    ] {
+        writeln!(stdin, "{request}").unwrap();
+    }
+    drop(stdin);
+    let output = child.wait_with_output().expect("the server exits");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let packets: Vec<Value> = stdout
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("each line is one JSON packet"))
+        .collect();
+
+    let resources = packets
+        .iter()
+        .find(|packet| packet["id"] == json!(2))
+        .expect("resources/list is answered");
+    assert_eq!(
+        resources["result"]["resources"][0]["uri"],
+        json!("computer-use://screen")
+    );
+
+    let updates: Vec<&Value> = packets
+        .iter()
+        .filter(|packet| packet["method"] == json!("notifications/resources/updated"))
+        .collect();
+    assert_eq!(
+        updates.len(),
+        2,
+        "subscribing reports the first view, and only the action reports another: {stdout}"
+    );
+    assert_eq!(updates[0]["params"]["uri"], json!("computer-use://screen"));
+    assert!(
+        updates[0].get("id").is_none(),
+        "a notification carries no id: {stdout}"
+    );
+
+    let permissions = packets
+        .iter()
+        .position(|packet| packet["id"] == json!(4))
+        .expect("permissions is answered");
+    let action = packets
+        .iter()
+        .position(|packet| packet["id"] == json!(5))
+        .expect("the action is answered");
+    let reported = packets
+        .iter()
+        .rposition(|packet| packet["method"] == json!("notifications/resources/updated"))
+        .expect("the action reported a change");
+    assert!(
+        permissions < reported && action < reported,
+        "reading permissions reports nothing, and the action's notification follows it: {stdout}"
+    );
+    assert_eq!(
+        reported,
+        packets.len() - 1,
+        "the answer comes before its notification: {stdout}"
+    );
+}
+
+#[test]
+fn a_key_spelling_is_checked_before_a_permission_is_asked_for() {
+    let (stdout, _, ok) = run(&["call", "press_key", "--args", "{\"key\":\"f13\"}"]);
+    assert!(!ok, "a key that does not exist is refused");
+    assert!(stdout.contains("unknown key"), "{stdout}");
+    assert!(
+        stdout.contains("Return"),
+        "the refusal should name a key that works: {stdout}"
+    );
+
+    // A literal backslash-n is the Return key, so it gets past the key check. What
+    // happens next depends on the machine: a trusted process presses it, an
+    // untrusted one stops at the permission gate. Neither is a refusal.
+    let (stdout, _, _) = run(&["call", "press_key", "--args", "{\"key\":\"\\\\n\"}"]);
+    assert!(
+        !stdout.contains("unknown key"),
+        "a literal backslash-n is a key, not a spelling mistake: {stdout}"
+    );
+    assert!(
+        stdout.contains("Pressed `Return`") || stdout.contains("Accessibility"),
+        "the escape has to reach the key path: {stdout}"
+    );
+}
+
+#[test]
+fn background_input_without_an_app_is_refused_before_a_permission() {
+    let (stdout, _, ok) = run(&[
+        "call",
+        "type_text",
+        "--args",
+        "{\"text\":\"hi\",\"background\":true}",
+    ]);
+    assert!(!ok);
+    assert!(stdout.contains("`background` needs `app`"), "{stdout}");
+    assert!(!stdout.contains("Accessibility"), "{stdout}");
+}
+
+#[test]
+fn the_self_automation_rule_round_trips_through_the_cli() {
+    let home = temporary_home("self-automation");
+    let (stdout, _, ok) = run_with_home(&home, &["apps", "list"]);
+    assert!(ok, "{stdout}");
+    assert!(
+        stdout.contains("Self-automation: refused for the app hosting this server"),
+        "{stdout}"
+    );
+
+    let (stdout, _, ok) = run_with_home(&home, &["apps", "self-automation", "allow"]);
+    assert!(ok, "{stdout}");
+    assert_eq!(config_of(&home)["self_automation"], json!("allow"));
+    assert!(stdout.contains("hosting app is reachable"), "{stdout}");
+
+    let (_, stderr, ok) = run_with_home(&home, &["apps", "self-automation", "sometimes"]);
+    assert!(!ok);
+    assert!(stderr.contains("allow"), "{stderr}");
+
+    let (_, _, ok) = run_with_home(&home, &["apps", "reset"]);
+    assert!(ok);
+    assert!(config_of(&home).get("self_automation").is_none());
+
+    let (stdout, _, _) = run_with_home(&home, &["doctor", "--json"]);
+    let status: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(status["self_automation"], json!("deny"));
 
     std::fs::remove_dir_all(&home).ok();
 }

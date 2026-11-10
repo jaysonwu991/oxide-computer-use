@@ -35,7 +35,10 @@ oxide-reins doctor
 
 The installer picks the Apple Silicon or Intel archive from the
 [latest release](https://github.com/jaysonwu991/oxide-reins/releases), checks
-its SHA-256, and installs `oxide-reins` into `~/.local/bin`.
+its SHA-256, and installs `oxide-reins` into `~/.local/bin`. Beside the binary it
+writes `.oxide-reins-install`, naming the release, the version, the platform and
+the installed binary's SHA-256; `oxide-reins doctor` reports that marker and the
+build it is running.
 `OXIDE_REINS_INSTALL_DIR`, `OXIDE_REINS_VERSION` and `OXIDE_REINS_REPO`
 override where it goes and what it installs. There is no Linux or Windows
 archive: the tools drive macOS APIs, so another platform builds to explicit
@@ -70,11 +73,19 @@ Details and the equivalent per-client commands are in
 ## Check permissions and policy
 
 ```sh
-oxide-reins doctor          # permissions, app policy, versions
+oxide-reins doctor          # permissions, app policy, the build it runs
 oxide-reins doctor --prompt # ask macOS to show the permission prompts
-oxide-reins apps deny "1Password"
 oxide-reins apps list
+oxide-reins apps deny "1Password"
 ```
+
+An approval is per app and can name the bundle identity it was given for, so a
+different app answering to the same name is refused; the app hosting this server
+is refused unless `apps self-automation allow` says otherwise. Each decision is re-read on
+every call: `apps allow` approves from now on, `apps grant-once` approves one
+call, `apps revoke` withdraws every decision about one app, and `apps policy deny`
+refuses an app nobody has decided about. See
+[docs/configuration.md](docs/configuration.md#app-policy).
 
 ## Tools
 
@@ -88,10 +99,10 @@ oxide-reins apps list
 | `perform_secondary_action` | A named AX action such as `AXShowMenu`; an action the element does not support is refused with the list it does support. |
 | `set_value` | Writes `AXValue` only when the element reports it settable, then reads it back. |
 | `select_text` | Selects a span inside a text element, counted in UTF-16 units like Cocoa ranges. |
-| `type_text` | Types into the focused control; activates the app first. |
-| `press_key` | One key with optional `cmd`/`shift`/`alt`/`ctrl` modifiers. |
+| `type_text` | Types into the focused control, a newline as `Return`; activates the app first, or `background: true` to one process. |
+| `press_key` | One key with optional `cmd`/`shift`/`alt`/`ctrl` modifiers, foreground or `background`; `\n` and `\t` are read as `Return` and `Tab`. |
 | `scroll` | Wheel events at the frontmost window, an element center, or `x`/`y`; needs no snapshot. |
-| `drag` | Paced HID drag from an element center or `from_x`/`from_y` to `to_x`/`to_y`. |
+| `drag` | Paced HID drag from an element center or `from_x`/`from_y` to `to_x`/`to_y`, stopped by a person's input. |
 | `screenshot` | A PNG of the screen or of one app's window. |
 
 Element indexes are per-process state: `get_app_state` and `query` replace the
@@ -133,8 +144,10 @@ call fails.
   moved window or a denied app produces an error an agent can act on, not a
   success message.
 - **Server** — newline-delimited JSON-RPC over stdio, serving revisions
-  `2025-06-18`, `2025-03-26` and `2024-11-05` by echoing the client's, tools
-  only. Tool failures are `isError` results, not protocol errors.
+  `2025-06-18`, `2025-03-26` and `2024-11-05` by echoing the client's: tools, and
+  one resource (`computer-use://screen`) whose reads capture on demand and whose
+  subscribers are told when a call may have changed the screen. Tool failures are
+  `isError` results, not protocol errors.
 
 ## Layout
 
@@ -143,12 +156,13 @@ src/main.rs        CLI: mcp, call, tools, doctor, install, apps
 src/mcp.rs         stdio JSON-RPC server and version negotiation
 src/tools.rs       the tool schemas, dispatch and result shape
 src/install.rs     per-client config writing (JSON and TOML) and reserved names
-src/policy.rs      the app allow/deny policy
+src/policy.rs      per-app approvals, bundle identities and the default policy
 src/runtime.rs     platform selection; macOS implementation, explicit stub elsewhere
 src/macos/ax.rs    accessibility elements, attributes, actions, ranges
 src/macos/tree.rs  snapshot rendering and window binding
 src/macos/apps.rs  running apps and windows via the window server
 src/macos/input.rs synthetic pointer, keyboard and scroll events
+src/macos/takeover.rs a listen-only event tap that yields to a person's input
 src/macos/screen.rs screenshot capture
 src/macos/cf.rs    Core Foundation bridging
 tests/cli.rs       binary-level checks: CLI, MCP handshake, installers, policy, UTF-8
@@ -156,7 +170,7 @@ install.sh         the curl installer the releases serve
 scripts/           set-version.sh, which a release tag stamps into the crate
 .github/           CI, and the two release workflows: the drafter drafts the
                    next release, release.yml attaches its archives on publish
-docs/              install, clients, comparison, issue audit
+docs/              install, clients, comparison, parity, issue audit
 ```
 
 ## Documentation
@@ -181,21 +195,34 @@ docs/              install, clients, comparison, issue audit
 - [docs/issues.md](docs/issues.md) — an audit against the
   `open-computer-use` issue tracker: what is designed out, what is mitigated,
   what is still open.
+- [docs/parity.md](docs/parity.md) — the Codex Computer Use parity follow-ups
+  from the Oxide Desktop review: what this runtime now does, what stays in the
+  client, and what is still unverified.
 
 ## Limits
 
 - macOS only. Other platforms compile to a build whose tools return an explicit
-  "not implemented here" error.
-- Typing and pointer events need the target app in front; `set_value` and
-  `AXPress` are the paths that work in the background.
+  "not implemented here" error. There is no Windows backend.
+- Pointer events need the target app in front. `set_value` and `AXPress` work in
+  the background, and `type_text`/`press_key` with `background: true` deliver keys
+  to one process without activating it — an app that keeps its own key focus may
+  ignore them, so the reply asks for verification.
+- The preview is a resource, not a stream: `resources/read` on
+  `computer-use://screen` captures on demand, and a subscriber is told when a
+  call may have changed the screen. Nothing is pushed on a timer.
 - Native `<input type="date">` segments and web content behind a cross-origin
   picker are not reachable by AX alone.
 - No audit log or automatic screenshot after every action. Request
   `screenshot` or `include_screenshot` for visual verification. Oxide can keep
-  the last returned image visible; it does not stream the screen.
-- The optional helper does not add isolated background input, Codex-style
-  per-app approval/settings UX, or automatic unlock. See the
-  [integration and parity limits](docs/oxide-helper.md).
+  the last returned image visible; the runtime does not stream the screen.
+- The app policy and its approval commands are the server-side half of Codex's
+  per-app Allow / Always allow / revoke model, and the hosting app is refused
+  unless `apps self-automation allow` says otherwise. A client-side settings UI,
+  the built-in browser, native @App selection, and automatic unlock/display
+  covering are not part of this repository.
+- The optional helper adds no isolated background input, streaming preview or
+  system-wide overlay. See the [parity record](docs/parity.md) and the
+  [integration limits](docs/oxide-helper.md).
 
 ## License
 

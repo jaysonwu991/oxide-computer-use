@@ -15,7 +15,7 @@ use clap::{Parser, Subcommand};
 use serde_json::{json, Value};
 
 use install::Client;
-use policy::Policy;
+use policy::{Fallback, Identity, Policy};
 use runtime::Runtime;
 
 #[derive(Parser)]
@@ -51,7 +51,12 @@ enum Command {
         sleep: f64,
     },
     /// Print the tool names this build exposes.
-    Tools,
+    Tools {
+        /// Print each tool's description and input schema, which is what an
+        /// agent's tool search reads.
+        #[arg(long)]
+        json: bool,
+    },
     /// Check the permissions Computer Use needs.
     Doctor {
         /// Print machine-readable JSON.
@@ -91,11 +96,27 @@ enum Command {
 enum AppsCommand {
     /// Show the app policy and the running apps it marks.
     List,
-    /// Allow an app; with no allow list yet, this starts one.
+    /// Approve an app from now on, pinned to the bundle identity it has now.
     Allow { app: String },
-    /// Block an app, whatever the allow list says.
+    /// Refuse an app, whatever the allow list says.
     Deny { app: String },
-    /// Clear both lists and allow every app again.
+    /// Withdraw every decision about one app, including a deny.
+    Revoke { app: String },
+    /// Approve exactly one call.
+    #[command(name = "grant-once")]
+    GrantOnce { app: String },
+    /// Decide what an app with no decision of its own may do.
+    Policy {
+        /// allow or deny.
+        mode: String,
+    },
+    /// Decide whether the app hosting this server may be driven.
+    #[command(name = "self-automation")]
+    SelfAutomation {
+        /// allow or deny.
+        mode: String,
+    },
+    /// Clear every decision and allow every app again.
     Reset,
 }
 
@@ -116,9 +137,13 @@ fn run() -> Result<()> {
             Ok(())
         }
         Some(Command::Mcp) => mcp::serve(),
-        Some(Command::Tools) => {
-            for name in tools::names() {
-                println!("{name}");
+        Some(Command::Tools { json }) => {
+            if json {
+                println!("{}", serde_json::to_string_pretty(&tools::specs())?);
+            } else {
+                for name in tools::names() {
+                    println!("{name}");
+                }
             }
             Ok(())
         }
@@ -238,8 +263,17 @@ fn apps(command: AppsCommand) -> Result<()> {
             println!("\nRunning apps:\n{}", Runtime::new().list_apps(false)?);
         }
         AppsCommand::Allow { app } => {
-            policy.allow(&app)?;
-            println!("Allowed `{app}`.");
+            let identity = identity_for(&app);
+            policy.allow(&app, identity.clone())?;
+            match identity {
+                Some(identity) => println!(
+                    "Allowed `{app}` as {} ({}).",
+                    identity.bundle_id, identity.path
+                ),
+                None => println!(
+                    "Allowed `{app}` by name; run `oxide-reins apps allow \"{app}\"` while it is running to pin its bundle identity."
+                ),
+            }
             println!("{}", policy.describe());
         }
         AppsCommand::Deny { app } => {
@@ -247,14 +281,81 @@ fn apps(command: AppsCommand) -> Result<()> {
             println!("Denied `{app}`.");
             println!("{}", policy.describe());
         }
+        AppsCommand::Revoke { app } => {
+            policy.revoke(&app)?;
+            println!("Withdrew every decision about `{app}`; it follows the default policy again.");
+            println!("{}", policy.describe());
+        }
+        AppsCommand::GrantOnce { app } => {
+            let identity = identity_for(&app);
+            policy.grant_once(&app, identity.clone())?;
+            match identity {
+                Some(identity) => println!(
+                    "Approved `{app}` as {} for one call; the next call spends it.",
+                    identity.bundle_id
+                ),
+                None => println!("Approved `{app}` by name for one call; the next call spends it."),
+            }
+        }
+        AppsCommand::Policy { mode } => {
+            let fallback = Fallback::parse(&mode).with_context(|| {
+                format!("`{mode}` is not an app policy; pass `allow` or `deny`")
+            })?;
+            policy.set_fallback(fallback)?;
+            println!("{}", policy.describe());
+        }
+        AppsCommand::SelfAutomation { mode } => {
+            let fallback = Fallback::parse(&mode).with_context(|| {
+                format!("`{mode}` is not a self-automation policy; pass `allow` or `deny`")
+            })?;
+            policy.set_self_automation(fallback)?;
+            println!("{}", policy.describe());
+        }
         AppsCommand::Reset => {
             policy.clear()?;
             println!(
-                "Cleared the app policy; every app with Accessibility access is reachable again."
+                "Cleared the app policy; every app is reachable again, except the hosting app that self-automation refuses."
             );
         }
     }
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn identity_for(app: &str) -> Option<Identity> {
+    macos::apps::identity_by_name(app)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn identity_for(_app: &str) -> Option<Identity> {
+    None
+}
+
+/// What this binary is: the path it runs from, the target it was built for, and
+/// the marker the installer leaves beside an installed copy. A client that
+/// bundles the runtime can report which build it started.
+fn provenance() -> Value {
+    let executable = std::env::current_exe().ok();
+    let marker = executable
+        .as_deref()
+        .and_then(|path| path.parent())
+        .map(|directory| directory.join(".oxide-reins-install"))
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .map(|text| {
+            let mut fields = serde_json::Map::new();
+            for line in text.lines() {
+                if let Some((key, value)) = line.split_once(' ') {
+                    fields.insert(key.trim().to_string(), json!(value.trim()));
+                }
+            }
+            Value::Object(fields)
+        });
+    json!({
+        "path": executable.map(|path| path.display().to_string()),
+        "target": format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS),
+        "profile": if cfg!(debug_assertions) { "debug" } else { "release" },
+        "install": marker,
+    })
 }
 
 fn doctor(as_json: bool, prompt: bool) -> Result<()> {
@@ -273,6 +374,18 @@ fn doctor(as_json: bool, prompt: bool) -> Result<()> {
                 "screen_recording": screen_recording,
                 "allowed_apps": policy.allowed(),
                 "denied_apps": policy.denied(),
+                "app_identities": policy.identities(),
+                "app_policy": match policy.fallback() {
+                    Fallback::Allow => "allow",
+                    Fallback::Deny => "deny",
+                },
+                "one_time_approval": policy.one_time(),
+                "self_automation": match policy.self_automation() {
+                    Fallback::Allow => "allow",
+                    Fallback::Deny => "deny",
+                },
+                "policy_error": policy.error(),
+                "provenance": provenance(),
                 "launching_app": permissions::launching_app(),
                 "guidance": permissions::guidance(),
                 "config": Policy::path().map(|path| path.display().to_string()),
@@ -297,6 +410,28 @@ fn doctor(as_json: bool, prompt: bool) -> Result<()> {
             }
         );
         println!("{}", policy.describe());
+        let build = provenance();
+        println!(
+            "Built for: {} ({})",
+            build["target"].as_str().unwrap_or("unknown"),
+            build["profile"].as_str().unwrap_or("unknown")
+        );
+        if let Some(path) = build["path"].as_str() {
+            println!("Binary: {path}");
+        }
+        if let Some(install) = build["install"].as_object() {
+            println!(
+                "Install: {} {}",
+                install
+                    .get("source")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown"),
+                install
+                    .get("version")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown")
+            );
+        }
         if !accessibility || !screen_recording {
             println!("\n{}", permissions::guidance());
         }

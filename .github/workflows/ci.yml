@@ -20,3 +20,17 @@ jobs:
         run: |
           sh -n install.sh
           bash -n scripts/set-version.sh
+
+  # Every release archive is built for both Mac architectures, so both have to
+  # compile on each change rather than for the first time at tag time.
+  targets:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: cargo build --locked --release --target ${{ matrix.target }}
