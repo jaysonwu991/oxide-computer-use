@@ -9,7 +9,7 @@ launches it.
 
 | File | Written by | Read by | Purpose |
 | --- | --- | --- | --- |
-| `~/.config/oxide-reins/config.json` | `oxide-reins apps allow\|deny\|reset` | the server at start | App allow/deny policy. |
+| `~/.config/oxide-reins/config.json` | `oxide-reins apps allow\|deny\|revoke\|grant-once\|policy\|reset` | every tool call | Per-app approvals, their bundle identities and the default policy. |
 | `$OXIDE_REINS_CONFIG` | you | the server at start | Overrides the policy path (a file, not a directory). |
 | `~/.oxide/mcp.json` | `install --client oxide` | Oxide | Global MCP servers. |
 | `./.oxide/mcp.json` | `install --client oxide --project` | Oxide | Project MCP servers. |
@@ -47,8 +47,16 @@ does reserve is refused with that explanation. Names may contain letters, digits
 
 ```json
 {
+  "app_policy": "deny",
   "allowed_apps": ["Finder", "TextEdit", "Google Chrome"],
-  "denied_apps": ["1Password", "Keychain Access"]
+  "denied_apps": ["1Password", "Keychain Access"],
+  "app_identities": {
+    "Finder": {
+      "bundle_id": "com.apple.finder",
+      "path": "/System/Library/CoreServices/Finder.app"
+    }
+  },
+  "one_time_grant": { "app": "Preview" }
 }
 ```
 
@@ -56,28 +64,50 @@ Semantics:
 
 - **Deny wins.** A name in `denied_apps` is refused even if the allow list also
   matches it.
-- **An empty allow list means "everything not denied".** Once `allowed_apps` has
-  one entry, every app not on it is refused.
+- **The allow list decides when `app_policy` is absent.** An empty list means
+  "everything not denied"; once `allowed_apps` has one entry, every app not on it
+  is refused. `app_policy` makes that choice explicit: `"allow"` or `"deny"` for
+  an app with no decision of its own.
+- **An approval can be pinned to a bundle identity.** `apps allow` records the
+  bundle identifier and bundle path of the running app, and every later call
+  reads the identity of the process it resolved. A different app answering to the
+  same name is refused, naming both identities. A name-only approval (granted
+  while the app was not running) still matches on the name; re-running
+  `apps allow` while the app runs pins it.
+- **One approval can be spent on one call.** `apps grant-once` writes
+  `one_time_grant`, which is consumed by the next call that uses it and removed
+  from the file. It is refused, and kept, when the running app's identity differs
+  from the one recorded.
 - Matching is case-insensitive and exact on the app name as macOS reports it —
   the same string `list_apps` prints. `apps deny 1password` blocks `1Password`.
 - The check happens after `app` is resolved and before any accessibility call, so
   a denial reads as a policy decision, not as a permissions problem.
-- `list_apps` still shows a blocked app, marked `[blocked by app policy]`, so an
-  agent can tell "refused" from "not running".
+- `list_apps` still shows a blocked app, marked `[blocked by app policy]`, and a
+  one-call approval as `[approved for one call]`, so an agent can tell "refused"
+  from "not running".
+- **The file is re-read on every call.** An approval, a revocation or a one-time
+  grant written by `apps allow`/`revoke`/`grant-once` in one terminal reaches an
+  `oxide-reins mcp` server that is already running; nothing has to be restarted.
+- **A file that does not parse refuses every app**, with a message naming the
+  path and `apps reset`, instead of falling back to "unlisted, so allowed".
 
 Commands:
 
 ```sh
-oxide-reins apps list              # policy + running apps it marks
-oxide-reins apps allow "Finder"    # starts or extends the allow list
-oxide-reins apps deny "1Password"  # always wins
-oxide-reins apps reset             # clears both lists
+oxide-reins apps list                   # policy, config path and running apps it marks
+oxide-reins apps allow "Finder"         # approve from now on, pinned to its identity
+oxide-reins apps grant-once "Preview"   # approve exactly one call
+oxide-reins apps deny "1Password"       # always wins
+oxide-reins apps revoke "Finder"        # withdraw every decision about one app, a deny included
+oxide-reins apps policy deny            # an app with no decision is refused
+oxide-reins apps reset                  # clear everything and allow every app again
 ```
 
-The policy is read **when a process starts**. A running `oxide-reins mcp`
-server keeps the policy it started with; change it, then restart the session (or
-let the client reconnect) for it to take effect. `oxide-reins call` reads it per
-invocation.
+An app that is refused is told exactly what to ask for: the refusal message names
+`apps grant-once` for one call and `apps allow` for every call, and a deny names
+`apps revoke`. That message is the whole approval surface for a stdio MCP server:
+the decision belongs to the person, and the client's own tool approval is a
+separate gate.
 
 ## Defaults
 
@@ -126,7 +156,8 @@ connection and verify the recipient in System Settings. Existing grants to
 Oxide.app do not grant the helper access. Moving/rebuilding a development bundle
 can affect attribution or leave a stale entry; recheck grants after reconnecting.
 
-`oxide-reins doctor` reports both, plus the policy and its path.
+`oxide-reins doctor` reports both, plus the policy, its path and the build it
+runs (see [provenance](development.md#provenance)).
 `oxide-reins doctor --prompt` asks macOS to show the prompts. Neither can grant
 on your behalf; only System Settings can.
 

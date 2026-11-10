@@ -286,6 +286,11 @@ fn a_codex_install_warns_about_an_entry_under_codex_computer_use_name() {
     std::fs::remove_dir_all(&home).ok();
 }
 
+fn config_of(home: &Path) -> Value {
+    let text = std::fs::read_to_string(home.join(".config/oxide-reins/config.json")).unwrap();
+    serde_json::from_str(&text).unwrap()
+}
+
 #[test]
 fn the_app_policy_round_trips_through_the_cli() {
     let home = temporary_home("policy");
@@ -294,22 +299,135 @@ fn the_app_policy_round_trips_through_the_cli() {
     assert!(stdout.contains("No app policy"), "{stdout}");
 
     let (stdout, _, ok) = run_with_home(&home, &["apps", "deny", "1Password"]);
-    assert!(ok);
-    assert!(stdout.contains("1Password"), "{stdout}");
+    assert!(ok, "{stdout}");
+    assert_eq!(config_of(&home)["denied_apps"], json!(["1Password"]));
 
     let (stdout, _, ok) = run_with_home(&home, &["apps", "list"]);
-    assert!(ok);
-    assert!(stdout.contains("Denied apps: 1Password"), "{stdout}");
+    assert!(ok, "{stdout}");
+    assert!(stdout.contains("Denied: 1Password"), "{stdout}");
+
+    let (_, stderr, ok) = run_with_home(&home, &["apps", "policy", "sometimes"]);
+    assert!(!ok, "an unknown policy is refused");
+    assert!(stderr.contains("allow"), "{stderr}");
+
+    let (stdout, _, ok) = run_with_home(&home, &["apps", "policy", "deny"]);
+    assert!(ok, "{stdout}");
+    assert_eq!(config_of(&home)["app_policy"], json!("deny"));
+    assert!(stdout.contains("default: deny"), "{stdout}");
+
+    let (stdout, _, ok) = run_with_home(&home, &["apps", "grant-once", "TextEdit"]);
+    assert!(ok, "{stdout}");
+    assert_eq!(config_of(&home)["one_time_grant"]["app"], json!("TextEdit"));
+
+    let (stdout, _, ok) = run_with_home(&home, &["apps", "revoke", "TextEdit"]);
+    assert!(ok, "{stdout}");
+    assert!(config_of(&home).get("one_time_grant").is_none(), "{stdout}");
+
+    let (stdout, _, ok) = run_with_home(&home, &["apps", "revoke", "1Password"]);
+    assert!(ok, "{stdout}");
+    assert!(stdout.contains("default policy again"), "{stdout}");
+    assert_eq!(config_of(&home)["denied_apps"], json!([]));
 
     let (_, _, ok) = run_with_home(&home, &["apps", "reset"]);
     assert!(ok);
-    let config: Value = serde_json::from_str(
-        &std::fs::read_to_string(home.join(".config/oxide-reins/config.json")).unwrap(),
-    )
-    .unwrap();
+    let config = config_of(&home);
     assert_eq!(config["denied_apps"], json!([]));
+    assert!(config.get("app_policy").is_none(), "{config}");
 
     std::fs::remove_dir_all(&home).ok();
+}
+
+#[test]
+fn a_policy_file_that_does_not_parse_refuses_every_app() {
+    let home = temporary_home("policy-broken");
+    let path = home.join(".config/oxide-reins/config.json");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, "{ not json").unwrap();
+
+    let (stdout, _, ok) = run_with_home(&home, &["apps", "list"]);
+    assert!(ok, "{stdout}");
+    assert!(stdout.contains("Unreadable policy"), "{stdout}");
+
+    // `doctor` exits nonzero while a grant is missing; the JSON is still printed.
+    let (stdout, _, _) = run_with_home(&home, &["doctor", "--json"]);
+    let status: Value = serde_json::from_str(&stdout).unwrap();
+    assert!(
+        status["policy_error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("apps reset"),
+        "{status}"
+    );
+
+    std::fs::remove_dir_all(&home).ok();
+}
+
+#[test]
+fn doctor_reports_the_build_it_runs_and_the_installer_marker() {
+    let home = temporary_home("provenance");
+    let marker = home.join("bin/.oxide-reins-install");
+    std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+    std::fs::write(
+        &marker,
+        "source jaysonwu991/oxide-reins\nversion 0.1.0\narch darwin-arm64\n",
+    )
+    .unwrap();
+
+    let (stdout, _, _) = run_with_home(&home, &["doctor", "--json"]);
+    let status: Value = serde_json::from_str(&stdout).unwrap();
+    let build = &status["provenance"];
+    assert!(build["path"]
+        .as_str()
+        .unwrap_or_default()
+        .ends_with("oxide-reins"));
+    assert!(build["target"].as_str().unwrap_or_default().contains('-'));
+    assert!(matches!(
+        build["profile"].as_str(),
+        Some("debug") | Some("release")
+    ));
+    assert!(
+        build["install"].is_null(),
+        "the marker is read beside the running binary, not in HOME: {build}"
+    );
+
+    std::fs::remove_dir_all(&home).ok();
+}
+
+#[test]
+fn tools_json_prints_the_surface_an_agent_searches() {
+    let (stdout, stderr, ok) = run(&["tools", "--json"]);
+    assert!(ok, "{stderr}");
+    let specs: Value = serde_json::from_str(&stdout).unwrap();
+    let specs = specs.as_array().expect("tools --json prints an array");
+    assert_eq!(specs.len(), 13);
+    for tool in specs {
+        assert!(tool["name"].as_str().is_some_and(|name| !name.is_empty()));
+        let description = tool["description"].as_str().unwrap_or_default();
+        assert!(
+            description.to_lowercase().contains("gui")
+                || description.to_lowercase().contains("app")
+                || description.to_lowercase().contains("element"),
+            "{} has no app-facing words: {description}",
+            tool["name"]
+        );
+    }
+}
+
+#[test]
+fn a_key_spelling_is_checked_before_a_permission_is_asked_for() {
+    let (stdout, _, ok) = run(&["call", "press_key", "--args", "{\"key\":\"f13\"}"]);
+    assert!(!ok, "a key that does not exist is refused");
+    assert!(stdout.contains("unknown key"), "{stdout}");
+    assert!(
+        stdout.contains("Return"),
+        "the refusal should name a key that works: {stdout}"
+    );
+
+    // A literal backslash-n is the Return key, so it gets past the key check and
+    // stops at the permission gate instead.
+    let (stdout, _, _) = run(&["call", "press_key", "--args", "{\"key\":\"\\\\n\"}"]);
+    assert!(!stdout.contains("unknown key"), "{stdout}");
+    assert!(stdout.contains("Accessibility"), "{stdout}");
 }
 
 #[test]

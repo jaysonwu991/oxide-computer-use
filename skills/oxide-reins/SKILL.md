@@ -53,8 +53,17 @@ Computer Use under the plain `computer-use` name; the tool names are identical e
 
 ## Failures worth reading
 
-- `` `X` is on the deny list `` or `` not on the allow list `` — the local app
-  policy. `oxide-reins apps allow "X"` changes it; do not work around it.
+- `` `X` is on the deny list ``, `` not on the allow list `` or `` is not
+  approved `` — the local app policy. `oxide-reins apps allow "X"` approves from
+  now on and `oxide-reins apps grant-once "X"` approves one call; a deny is
+  lifted with `apps revoke "X"`. Do not work around it.
+- `was approved as … but this process is …` — the app's bundle identity changed
+  since it was approved. Ask the user whether that is still the app they meant;
+  do not re-approve it yourself.
+- `unknown key` naming `\n` — `\n` is a backslash and an `n`, not a navigation
+  key. Use `press_key` with `Return` or `Tab`.
+- `user takeover` — a person used the keyboard or pointer during the gesture.
+  Leave the desktop to them, and re-read the app before acting again.
 - `Accessibility permission is missing` — the app hosting the server is not
   trusted. Call `permissions` in this MCP connection and ask the user to approve the reported host in System
   Settings → Privacy & Security → Accessibility, then restart the host. Do not approve permissions yourself.

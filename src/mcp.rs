@@ -72,7 +72,7 @@ fn handle(runtime: &mut Runtime, request: &Value) -> Option<Value> {
                 "name": "oxide-reins",
                 "version": env!("CARGO_PKG_VERSION")
             },
-            "instructions": "Use this server for native apps and signed-in browser tasks, including filling forms. Call permissions for setup diagnostics in the actual MCP host, list_apps to find the target, then get_app_state before acting on indexes from its newest snapshot. Re-observe after actions and use screenshot or include_screenshot for visual verification and client previews. Screenshots are snapshots, not a live stream. Respect requests to leave submission to the user. AXPress and set_value can work in the background; keyboard and pointer input activate the app and use the real desktop. Never approve OS permission dialogs yourself."
+            "instructions": "Use this server for GUI control of macOS desktop apps and signed-in browser tasks, including filling forms and reading a screen. Tools: permissions, list_apps, get_app_state, query, click, perform_secondary_action, set_value, select_text, type_text, press_key, scroll, drag, screenshot. Call permissions for setup diagnostics in the actual MCP host, list_apps to find the target, then get_app_state before acting on indexes from its newest snapshot. Re-observe after actions and use screenshot or include_screenshot for visual verification and client previews. Screenshots are snapshots, not a live stream. press_key takes Return, Tab, Escape, the arrows and F1-F12; a newline inside type_text is pressed as Return, and a literal backslash-n is not a navigation key. The app policy decides which apps are reachable: an unapproved app is refused with the exact `oxide-reins apps grant-once or apps allow` command, and `apps revoke` withdraws a decision while this session keeps running. A person moving the pointer or typing during a drag or a long type stops it: that is user takeover, so leave the desktop to them. Respect requests to leave submission to the user. AXPress and set_value can work in the background; keyboard and pointer input activate the app and use the real desktop. Never approve OS permission dialogs yourself. If a tool search does not list these tools, the MCP connection is missing rather than the capability."
         })),
         "ping" => Ok(json!({})),
         "tools/list" => Ok(json!({ "tools": tools::specs() })),
@@ -138,6 +138,32 @@ mod tests {
             json!("oxide-reins")
         );
         assert!(response["result"]["capabilities"]["tools"].is_object());
+    }
+
+    #[test]
+    fn the_instructions_name_every_tool_and_the_policy_commands() {
+        let response = request(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": { "protocolVersion": PROTOCOL_VERSION }
+        }))
+        .expect("initialize is answered");
+        let instructions = response["result"]["instructions"]
+            .as_str()
+            .expect("initialize carries instructions");
+        for name in tools::names() {
+            assert!(
+                instructions.contains(&name),
+                "the instructions do not mention {name}: {instructions}"
+            );
+        }
+        for hint in ["grant-once", "apps allow", "apps revoke", "takeover"] {
+            assert!(
+                instructions.contains(hint),
+                "the instructions do not explain {hint}: {instructions}"
+            );
+        }
     }
 
     #[test]

@@ -4,6 +4,7 @@ use anyhow::{bail, Result};
 use core_foundation_sys::base::{CFRelease, CFTypeRef};
 
 use super::ax::CGPoint;
+use super::takeover::Takeover;
 
 type CGEventRef = CFTypeRef;
 
@@ -154,6 +155,7 @@ pub fn drag(from: CGPoint, to: CGPoint) -> Result<()> {
         CGEventPost(HID_EVENT_TAP, down_event.0);
         pace(UI_SETTLED);
 
+        let watch = Takeover::start();
         let steps = 16;
         let mut previous = from;
         for step in 1..=steps {
@@ -184,6 +186,17 @@ pub fn drag(from: CGPoint, to: CGPoint) -> Result<()> {
             CGEventPost(HID_EVENT_TAP, event.0);
             previous = point;
             pace(DRAG_STEP);
+            if let Some(kind) = watch.as_ref().and_then(Takeover::poll) {
+                post(CGEventCreateMouseEvent(
+                    source.raw(),
+                    LEFT_MOUSE_UP,
+                    previous,
+                    0,
+                ))?;
+                bail!(
+                    "{kind} arrived from a person while the drag was running, so the drag stopped and the button was released. That is user takeover: leave the desktop to them, ask what is next, and re-read the app with get_app_state before acting again"
+                );
+            }
         }
 
         pace(UI_SETTLED);
@@ -222,109 +235,187 @@ fn modifiers(spec: &str) -> u64 {
     flags
 }
 
-fn key_code(name: &str) -> Option<u16> {
-    let name = name.trim();
-    let lower = name.to_lowercase();
-    let code = match lower.as_str() {
-        "return" | "enter" => 36,
-        "tab" => 48,
-        "space" | " " => 49,
-        "delete" | "backspace" => 51,
-        "escape" | "esc" => 53,
-        "forward_delete" | "forwarddelete" => 117,
-        "home" => 115,
-        "end" => 119,
-        "page_up" | "pageup" => 116,
-        "page_down" | "pagedown" => 121,
-        "left" | "arrow_left" | "left_arrow" => 123,
-        "right" | "arrow_right" | "right_arrow" => 124,
-        "down" | "arrow_down" | "down_arrow" => 125,
-        "up" | "arrow_up" | "up_arrow" => 126,
-        "f1" => 122,
-        "f2" => 120,
-        "f3" => 99,
-        "f4" => 118,
-        "f5" => 96,
-        "f6" => 97,
-        "f7" => 98,
-        "f8" => 100,
-        "f9" => 101,
-        "f10" => 109,
-        "f11" => 103,
-        "f12" => 111,
-        _ => {
-            let mut chars = name.chars();
-            let (first, rest) = (chars.next()?, chars.next());
-            if rest.is_some() {
-                return None;
-            }
-            match first {
-                'a' => 0,
-                's' => 1,
-                'd' => 2,
-                'f' => 3,
-                'h' => 4,
-                'g' => 5,
-                'z' => 6,
-                'x' => 7,
-                'c' => 8,
-                'v' => 9,
-                'b' => 11,
-                'q' => 12,
-                'w' => 13,
-                'e' => 14,
-                'r' => 15,
-                'y' => 16,
-                't' => 17,
-                '1' => 18,
-                '2' => 19,
-                '3' => 20,
-                '4' => 21,
-                '6' => 22,
-                '5' => 23,
-                '=' => 24,
-                '9' => 25,
-                '7' => 26,
-                '-' => 27,
-                '8' => 28,
-                '0' => 29,
-                ']' => 30,
-                'o' => 31,
-                'u' => 32,
-                '[' => 33,
-                'i' => 34,
-                'p' => 35,
-                'l' => 37,
-                'j' => 38,
-                '\'' => 39,
-                'k' => 40,
-                ';' => 41,
-                '\\' => 42,
-                ',' => 43,
-                '/' => 44,
-                'n' => 45,
-                'm' => 46,
-                '.' => 47,
-                '`' => 50,
-                _ => return None,
-            }
-        }
-    };
-    Some(code)
+/// A key name and the character a person would read for it, so a reply can say
+/// which key was actually pressed when the caller spelled it another way.
+struct Key {
+    code: u16,
+    name: String,
 }
 
-pub fn press(key: &str, modifier_spec: &str) -> Result<()> {
-    let spec = key.trim();
+const NAMED: [(&str, u16, &str); 40] = [
+    ("return", 36, "Return"),
+    ("enter", 36, "Return"),
+    ("tab", 48, "Tab"),
+    ("space", 49, "Space"),
+    (" ", 49, "Space"),
+    ("delete", 51, "Delete"),
+    ("backspace", 51, "Delete"),
+    ("escape", 53, "Escape"),
+    ("esc", 53, "Escape"),
+    ("forward_delete", 117, "Forward_Delete"),
+    ("forwarddelete", 117, "Forward_Delete"),
+    ("home", 115, "Home"),
+    ("end", 119, "End"),
+    ("page_up", 116, "Page_Up"),
+    ("pageup", 116, "Page_Up"),
+    ("page_down", 121, "Page_Down"),
+    ("pagedown", 121, "Page_Down"),
+    ("left", 123, "Left"),
+    ("arrow_left", 123, "Left"),
+    ("left_arrow", 123, "Left"),
+    ("right", 124, "Right"),
+    ("arrow_right", 124, "Right"),
+    ("right_arrow", 124, "Right"),
+    ("down", 125, "Down"),
+    ("arrow_down", 125, "Down"),
+    ("down_arrow", 125, "Down"),
+    ("up", 126, "Up"),
+    ("arrow_up", 126, "Up"),
+    ("up_arrow", 126, "Up"),
+    ("f1", 122, "F1"),
+    ("f2", 120, "F2"),
+    ("f3", 99, "F3"),
+    ("f4", 118, "F4"),
+    ("f5", 96, "F5"),
+    ("f6", 97, "F6"),
+    ("f7", 98, "F7"),
+    ("f8", 100, "F8"),
+    ("f9", 101, "F9"),
+    ("f10", 109, "F10"),
+    ("f11", 103, "F11"),
+];
+
+/// Spelling a key as an escape is common enough in a model's tool call that the
+/// runtime reads it rather than refusing: a literal `\n` is the Return key, not
+/// two characters, when it appears in `key`.
+fn escaped(spec: &str) -> Option<Key> {
+    let lower = spec.to_lowercase();
+    let name = match lower.trim() {
+        "\\n" | "\\r" | "newline" | "linefeed" | "lf" | "cr" => "Return",
+        "\\t" | "tab_char" => "Tab",
+        _ => match lower.as_str() {
+            "\n" | "\r" => "Return",
+            "\t" => "Tab",
+            _ => return None,
+        },
+    };
+    Some(Key {
+        code: if name == "Return" { 36 } else { 48 },
+        name: name.to_string(),
+    })
+}
+
+fn key(spec: &str) -> Option<Key> {
+    let lower = spec.to_lowercase();
+    if lower.trim() == "f12" {
+        return Some(Key {
+            code: 111,
+            name: "F12".to_string(),
+        });
+    }
+    if let Some((_, code, name)) = NAMED.iter().find(|(name, _, _)| *name == lower.trim()) {
+        return Some(Key {
+            code: *code,
+            name: (*name).to_string(),
+        });
+    }
+    if let Some(key) = escaped(&lower) {
+        return Some(key);
+    }
+    let spec = spec.trim();
+    let mut chars = spec.chars();
+    let (first, rest) = (chars.next()?, chars.next());
+    if rest.is_some() {
+        return None;
+    }
+    let code = match first {
+        'a' => 0,
+        's' => 1,
+        'd' => 2,
+        'f' => 3,
+        'h' => 4,
+        'g' => 5,
+        'z' => 6,
+        'x' => 7,
+        'c' => 8,
+        'v' => 9,
+        'b' => 11,
+        'q' => 12,
+        'w' => 13,
+        'e' => 14,
+        'r' => 15,
+        'y' => 16,
+        't' => 17,
+        '1' => 18,
+        '2' => 19,
+        '3' => 20,
+        '4' => 21,
+        '6' => 22,
+        '5' => 23,
+        '=' => 24,
+        '9' => 25,
+        '7' => 26,
+        '-' => 27,
+        '8' => 28,
+        '0' => 29,
+        ']' => 30,
+        'o' => 31,
+        'u' => 32,
+        '[' => 33,
+        'i' => 34,
+        'p' => 35,
+        'l' => 37,
+        'j' => 38,
+        '\'' => 39,
+        'k' => 40,
+        ';' => 41,
+        '\\' => 42,
+        ',' => 43,
+        '/' => 44,
+        'n' => 45,
+        'm' => 46,
+        '.' => 47,
+        '`' => 50,
+        _ => return None,
+    };
+    Some(Key {
+        code,
+        name: first.to_string(),
+    })
+}
+
+fn unknown_key(spec: &str) -> anyhow::Error {
+    anyhow::anyhow!(
+        "unknown key `{spec}`; use a key name such as Return, Tab, Escape, Left or Page_Down, or a single character. `\\n` is a backslash and an `n`, not the Return key: write Return, and move between fields with Tab"
+    )
+}
+
+fn parse(spec: &str, modifier_spec: &str) -> Result<(Key, u64)> {
+    let spec = spec.trim();
     let (modifier_part, key_part) = match spec.rsplit_once('+') {
         Some((modifiers, rest)) if !rest.is_empty() => (modifiers, rest),
         _ => (modifier_spec, spec),
     };
-    let code = key_code(key_part)
-        .ok_or_else(|| anyhow::anyhow!("unknown key `{key_part}`; use a key name such as Return, Tab, Escape, Left, Page_Down, or a single character"))?;
-    let flags = modifiers(modifier_part);
+    let key = key(key_part).ok_or_else(|| unknown_key(key_part))?;
+    Ok((key, modifiers(modifier_part)))
+}
+
+/// Resolve a key spelling without posting anything, so a malformed key is
+/// refused before an activation or a permission is asked for.
+pub fn check(key_spec: &str, modifier_spec: &str) -> Result<String> {
+    parse(key_spec, modifier_spec).map(|(key, _)| key.name)
+}
+
+/// Press one key and report the name of the key that was pressed.
+pub fn press(key_spec: &str, modifier_spec: &str) -> Result<String> {
+    let (key, flags) = parse(key_spec, modifier_spec)?;
     unsafe {
-        let down = Event(CGEventCreateKeyboardEvent(std::ptr::null(), code, true));
-        let up = Event(CGEventCreateKeyboardEvent(std::ptr::null(), code, false));
+        let down = Event(CGEventCreateKeyboardEvent(std::ptr::null(), key.code, true));
+        let up = Event(CGEventCreateKeyboardEvent(
+            std::ptr::null(),
+            key.code,
+            false,
+        ));
         if down.0.is_null() || up.0.is_null() {
             bail!("the window server refused to create the key event");
         }
@@ -335,13 +426,10 @@ pub fn press(key: &str, modifier_spec: &str) -> Result<()> {
         CGEventPost(HID_EVENT_TAP, down.0);
         CGEventPost(HID_EVENT_TAP, up.0);
     }
-    Ok(())
+    Ok(key.name)
 }
 
-pub fn type_text(text: &str) -> Result<()> {
-    if text.is_empty() {
-        bail!("text is empty");
-    }
+fn type_units(text: &str) -> Result<()> {
     let units: Vec<u16> = text.encode_utf16().collect();
     unsafe {
         let down = Event(CGEventCreateKeyboardEvent(std::ptr::null(), 0, true));
@@ -357,19 +445,82 @@ pub fn type_text(text: &str) -> Result<()> {
     Ok(())
 }
 
+pub struct Typed {
+    pub characters: usize,
+    pub line_breaks: usize,
+    pub takeover: Option<&'static str>,
+}
+
+/// Type text as Unicode key events. A newline inside `text` is the Return key,
+/// because an app that receives a newline inside one keyboard event usually
+/// inserts nothing; the count is reported so the caller can see what landed.
+pub fn type_text(text: &str) -> Result<Typed> {
+    if text.is_empty() {
+        bail!("text is empty");
+    }
+    let watch = Takeover::start();
+    let mut typed = Typed {
+        characters: 0,
+        line_breaks: 0,
+        takeover: None,
+    };
+    for (index, segment) in text.split('\n').enumerate() {
+        if index > 0 {
+            press("Return", "")?;
+            typed.line_breaks += 1;
+            if let Some(kind) = watch.as_ref().and_then(Takeover::poll) {
+                typed.takeover = Some(kind);
+                return Ok(typed);
+            }
+        }
+        let segment = segment.strip_suffix('\r').unwrap_or(segment);
+        if segment.is_empty() {
+            continue;
+        }
+        type_units(segment)?;
+        typed.characters += segment.chars().count();
+    }
+    Ok(typed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn code(spec: &str) -> Option<u16> {
+        key(spec).map(|key| key.code)
+    }
+
     #[test]
     fn named_keys_map_to_hid_key_codes() {
-        assert_eq!(key_code("Return"), Some(36));
-        assert_eq!(key_code("return"), Some(36));
-        assert_eq!(key_code("Escape"), Some(53));
-        assert_eq!(key_code("Page_Down"), Some(121));
-        assert_eq!(key_code("a"), Some(0));
-        assert_eq!(key_code("\""), None);
-        assert_eq!(key_code("nonsense"), None);
+        assert_eq!(code("Return"), Some(36));
+        assert_eq!(code("return"), Some(36));
+        assert_eq!(code("Escape"), Some(53));
+        assert_eq!(code("Page_Down"), Some(121));
+        assert_eq!(code("F12"), Some(111));
+        assert_eq!(code("a"), Some(0));
+        assert_eq!(code("\""), None);
+        assert_eq!(code("nonsense"), None);
+    }
+
+    #[test]
+    fn an_escaped_newline_is_the_return_key() {
+        assert_eq!(code(r"\n"), Some(36));
+        assert_eq!(code("\n"), Some(36));
+        assert_eq!(code(r"\r"), Some(36));
+        assert_eq!(code("newline"), Some(36));
+        assert_eq!(code(r"\t"), Some(48));
+        assert_eq!(code("\t"), Some(48));
+    }
+
+    #[test]
+    fn a_pressed_key_is_reported_by_the_name_that_was_used() {
+        assert_eq!(
+            key("Return").map(|key| key.name),
+            Some("Return".to_string())
+        );
+        assert_eq!(key(r"\n").map(|key| key.name), Some("Return".to_string()));
+        assert_eq!(key("a").map(|key| key.name), Some("a".to_string()));
     }
 
     #[test]
@@ -382,8 +533,11 @@ mod tests {
     }
 
     #[test]
-    fn an_unknown_key_is_rejected_with_a_hint() {
-        let error = press("nonsense", "").expect_err("nonsense is not a key");
-        assert!(error.to_string().contains("unknown key"));
+    fn an_unknown_key_is_rejected_with_a_hint_about_escapes() {
+        assert!(key("nonsense").is_none());
+        let error = unknown_key("nonsense").to_string();
+        assert!(error.contains("unknown key"), "{error}");
+        assert!(error.contains("Return"), "{error}");
+        assert!(error.contains("Tab"), "{error}");
     }
 }

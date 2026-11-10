@@ -39,8 +39,8 @@ design; "mitigated" means the failure is possible but reported accurately;
 | [#16](https://github.com/iFurySt/open-computer-use/issues/16) significant context usage | Mitigated: `max_output_chars` (default 20000) truncates with a visible note, screenshots are opt-in, and `query` searches a tree without dumping it. |
 | [#40](https://github.com/iFurySt/open-computer-use/issues/40) 1200-node ceiling hides content | Mitigated: the reply says it truncated and how to raise it; `max_tree_nodes` and `max_tree_depth` are parameters. |
 | [#36](https://github.com/iFurySt/open-computer-use/issues/36) fixed 160-character truncation | Mitigated: `text_limit` per call, `"max"` for full values, and truncated values carry their true length. |
-| [#15](https://github.com/iFurySt/open-computer-use/issues/15) prompt before touching an app | Mitigated: the client's own approval prompt, plus an app policy (`apps allow|deny`) enforced inside the server before any accessibility call. macOS has no OS-level per-app prompt, so the policy list is the per-app control. |
-| [#12](https://github.com/iFurySt/open-computer-use/issues/12) configurable allow list | Implemented: `apps allow`, `apps deny`, `apps reset`, `apps list`, stored in `~/.config/oxide-reins/config.json`; a deny rule wins over an allow list. |
+| [#15](https://github.com/iFurySt/open-computer-use/issues/15) prompt before touching an app | Mitigated: the client's own approval prompt, plus a per-app policy enforced inside the server before any accessibility call. `apps policy deny` makes approval the default, `apps grant-once` approves one call, and an approval is pinned to the bundle identity it was given for. macOS has no OS-level per-app prompt, so this policy is the per-app control. |
+| [#12](https://github.com/iFurySt/open-computer-use/issues/12) configurable allow list | Implemented: `apps allow`, `apps deny`, `apps revoke`, `apps grant-once`, `apps policy`, `apps reset`, `apps list`, stored in `~/.config/oxide-reins/config.json` and re-read on every call; a deny rule wins over an allow list, and an unreadable file refuses every app. |
 | [#39](https://github.com/iFurySt/open-computer-use/issues/39) auditing and visual feedback | Partly. Every action reply names the path it took (AX action versus pointer event), and `include_screenshot` attaches what the agent just read. There is no audit log and no post-action screenshot — **open**. |
 | [#11](https://github.com/iFurySt/open-computer-use/issues/11), [#18](https://github.com/iFurySt/open-computer-use/issues/18) macOS permission confusion, CLI `click` errors | Mitigated by messages: `doctor` reports both permissions and the app policy, a missing permission names the Settings pane, and an out-of-range or wrong-app index says which snapshot it belongs to. |
 | [#60](https://github.com/iFurySt/open-computer-use/issues/60), [#14](https://github.com/iFurySt/open-computer-use/issues/14), [#55](https://github.com/iFurySt/open-computer-use/issues/55) platform and product requests | Out of scope for a macOS-only server. |
@@ -51,9 +51,11 @@ This machine has Accessibility and Screen Recording ungranted for the terminal,
 so these paths compile and are unit-tested but were not exercised against a live
 app: window binding and the `window` selector, `set_value`'s settability check
 and read-back, `select_text`, the paced drag, `AXPress` versus pointer clicks,
-and `include_screenshot`'s window match. The config, protocol, policy, protocol
-negotiation and UTF-8 paths were verified end to end, and `list_apps` ran
-against the real window server.
+`include_screenshot`'s window match, a live bundle identity from a running app,
+and the takeover tap, which cannot even be installed without the grant. The
+config, protocol, policy decisions (including a decision written by another
+process reaching a running one), protocol negotiation and UTF-8 paths were
+verified end to end, and `list_apps` ran against the real window server.
 
 To close that gap on a machine where the terminal is trusted:
 

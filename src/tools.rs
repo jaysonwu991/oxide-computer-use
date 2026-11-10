@@ -54,7 +54,7 @@ fn action(
 pub fn specs() -> Value {
     json!([
         readonly(json!({}), &[],
-            "Check Accessibility and Screen Recording permissions in this MCP process, with the launching app and setup instructions. Does not request or grant permissions.",
+            "Check Accessibility and Screen Recording permissions in this MCP process, with the launching app and setup instructions. Does not request or grant permissions. Use it before driving the desktop, or when a GUI action fails with a permission error.",
             "permissions"
         ),
         readonly(
@@ -62,7 +62,7 @@ pub fn specs() -> Value {
                 "include_helpers": { "type": "boolean", "description": "Also show window-server helpers such as a native file picker that is not part of its app." }
             }),
             &[],
-            "List the running apps that own windows, with their pid, window titles and any app blocked by the local policy.",
+            "List the running desktop apps that own windows, with their pid, window titles and the app policy marker on each. Use it to find the app to drive, native or browser, and to see which app still needs approval.",
             "list_apps"
         ),
         readonly(
@@ -77,7 +77,7 @@ pub fn specs() -> Value {
                 "max_output_chars": { "type": "integer", "description": MAX_OUTPUT }
             }),
             &["app"],
-            "Read one app's accessibility tree as indexed lines. Element indexes from the newest snapshot are what click, set_value, select_text, perform_secondary_action, drag and scroll take, and they are bound to the window they came from.",
+            "Read one app's accessibility tree as indexed lines. Element indexes from the newest snapshot are what click, set_value, select_text, perform_secondary_action, drag and scroll take, and they are bound to the window they came from. This is the GUI element listing behind every later click or type.",
             "get_app_state"
         ),
         readonly(
@@ -91,7 +91,7 @@ pub fn specs() -> Value {
                 "max_output_chars": { "type": "integer", "description": MAX_OUTPUT }
             }),
             &["app"],
-            "Search one app's accessibility tree by text and/or role without printing the whole tree. Refreshes the element indexes.",
+            "Search one app's accessibility tree by text and/or role without printing the whole tree. Refreshes the element indexes. Use it to find a button, field or menu item in a long desktop or browser window.",
             "query"
         ),
         action(
@@ -103,7 +103,7 @@ pub fn specs() -> Value {
                 "button": { "type": "string", "enum": ["left", "right"], "description": "Default left." }
             }),
             &["app"],
-            "Activate an element. Left-click uses AXPress when available; right-click and other clicks use pointer events at the element center (or x/y). The reply says which path ran.",
+            "Click a GUI element: a button, link, menu item, checkbox or tab. Left-click uses AXPress when available; right-click and other clicks use pointer events at the element center (or x/y). The reply says which path ran.",
             "click",
             false
         ),
@@ -114,7 +114,7 @@ pub fn specs() -> Value {
                 "action": { "type": "string", "description": "Default AXPress; an unsupported action is refused with the list of actions the element does support." }
             }),
             &["app", "element_index"],
-            "Perform a named accessibility action on an element, such as AXShowMenu, AXIncrement or AXConfirm.",
+            "Perform a named accessibility action on a GUI element, such as AXShowMenu, AXIncrement or AXConfirm. Use it for a context menu or a stepper that has no clickable target.",
             "perform_secondary_action",
             false
         ),
@@ -125,7 +125,7 @@ pub fn specs() -> Value {
                 "value": { "type": "string" }
             }),
             &["app", "element_index", "value"],
-            "Write a string into an editable element's AXValue and read it back. A control that is not settable, or that ignores the write, fails instead of reporting success.",
+            "Write a string into an editable element's AXValue and read it back. A control that is not settable, or that ignores the write, fails instead of reporting success. Use it to fill a text field or form input without focusing the app or touching the keyboard.",
             "set_value",
             true
         ),
@@ -136,7 +136,7 @@ pub fn specs() -> Value {
                 "text": { "type": "string", "description": "The text to select inside the element." }
             }),
             &["app", "text"],
-            "Select a piece of text inside a text element, for reading or for a following action such as copy.",
+            "Select a piece of text inside a text element, for reading or for a following action such as copy. Use it in a document or a text field before pressing a keyboard shortcut.",
             "select_text",
             true
         ),
@@ -147,7 +147,7 @@ pub fn specs() -> Value {
                 "element_index": { "type": "integer" }
             }),
             &["text"],
-            "Type text into the focused control of an app (activates the app, and focuses element_index first when given).",
+            "Type text through the keyboard into the focused control of an app (activates the app, and focuses element_index first when given). A newline inside the text is pressed as Return. Use it for a search box, form field or terminal; it moves the real keyboard focus.",
             "type_text",
             false
         ),
@@ -158,7 +158,7 @@ pub fn specs() -> Value {
                 "app": { "type": "string", "description": APP }
             }),
             &["key"],
-            "Press one key, optionally with modifiers. Key names: Return, Tab, Escape, Space, Delete, Forward_Delete, Home, End, Page_Up, Page_Down, Left, Right, Up, Down, F1-F12 or a single character. Modifiers: cmd, shift, alt, ctrl.",
+            "Press one keyboard key, optionally with modifiers, in a GUI app. Key names: Return, Tab, Escape, Space, Delete, Forward_Delete, Home, End, Page_Up, Page_Down, Left, Right, Up, Down, F1-F12 or a single character; the spellings \"\\n\", \"\\t\" and \"\\r\" mean Return and Tab. Modifiers: cmd, shift, alt, ctrl. Use it to submit a form, dismiss a dialog or move between fields.",
             "press_key",
             false
         ),
@@ -172,7 +172,7 @@ pub fn specs() -> Value {
                 "y": { "type": "number" }
             }),
             &[],
-            "Scroll the app's frontmost window, or the pointer position when x/y or element_index is given. No snapshot is required.",
+            "Scroll a page, list or window with the mouse wheel: the app's frontmost window, or the pointer position when x/y or element_index is given. No snapshot is required.",
             "scroll",
             false
         ),
@@ -186,7 +186,7 @@ pub fn specs() -> Value {
                 "to_y": { "type": "number" }
             }),
             &["to_x", "to_y"],
-            "Drag with the left button from an element center or from_x/from_y to to_x/to_y. Paced pointer events, so it moves windows and selects text rather than posting one lost event.",
+            "Drag with the left mouse button from an element center or from_x/from_y to to_x/to_y: a window, a slider or a text selection. Paced pointer events, so it moves windows and selects text rather than posting one lost event. A person's input stops it.",
             "drag",
             false
         ),
@@ -196,7 +196,7 @@ pub fn specs() -> Value {
                 "window": { "type": "string", "description": "With app: an index or title substring to pick the window." }
             }),
             &[],
-            "Capture the screen, or one app's window, as a PNG image. Needs Screen Recording permission.",
+            "Capture a screenshot of the screen, or one app's window, as a PNG image. Needs Screen Recording permission. Use it to see a GUI that the accessibility tree does not describe; it is a snapshot, not a live stream.",
             "screenshot"
         )
     ])
@@ -329,6 +329,34 @@ mod tests {
             assert!(
                 readme.contains(&format!("| `{name}` |")),
                 "README.md needs a table row for {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_description_carries_the_words_an_agent_searches_for() {
+        let vocabulary = [
+            "gui",
+            "desktop",
+            "browser",
+            "screenshot",
+            "screen",
+            "pointer",
+            "mouse",
+            "keyboard",
+            "click",
+            "type",
+            "scroll",
+            "drag",
+            "element",
+        ];
+        for tool in specs().as_array().expect("specs is an array") {
+            let name = tool["name"].as_str().expect("a tool has a name");
+            let description = tool["description"].as_str().unwrap_or_default();
+            let lower = description.to_lowercase();
+            assert!(
+                vocabulary.iter().any(|word| lower.contains(word)),
+                "{name} names no app, element or input a search could match: {description}"
             );
         }
     }
