@@ -3,6 +3,9 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/jaysonwu991/oxide-reins/main/install.sh | sh
 #
+#   sh install.sh --check     # 0 when the installed copy is the latest release,
+#                             # 1 when an update is available, 2 when unknown
+#
 # Environment overrides:
 #   OXIDE_REINS_VERSION      version to install, with or without a leading "v"
 #                             (default: the latest release)
@@ -10,12 +13,14 @@
 #                             (default: $HOME/.local/bin)
 #   OXIDE_REINS_REPO         GitHub repository slug
 #                             (default: jaysonwu991/oxide-reins)
+#   OXIDE_REINS_RELEASES     base URL the manifest and archives come from
+#                             (default: https://github.com/<repo>/releases)
 set -eu
 
 REPO="${OXIDE_REINS_REPO:-jaysonwu991/oxide-reins}"
 VERSION="${OXIDE_REINS_VERSION:-}"
 INSTALL_DIR="${OXIDE_REINS_INSTALL_DIR:-$HOME/.local/bin}"
-RELEASES="https://github.com/${REPO}/releases"
+RELEASES="${OXIDE_REINS_RELEASES:-https://github.com/${REPO}/releases}"
 BINARY_NAME="oxide-reins"
 MANIFEST_NAME="oxide-reins-manifest"
 # A file beside the binary naming the install it came from, so a machine can
@@ -25,6 +30,11 @@ MARKER_NAME=".oxide-reins-install"
 err() {
     printf 'oxide-reins-install: error: %s\n' "$*" >&2
     exit 1
+}
+
+refuse() {
+    printf 'oxide-reins-install: error: %s\n' "$*" >&2
+    exit 2
 }
 
 warn() {
@@ -110,6 +120,41 @@ sha256_of() {
     fi
 }
 
+# The version a release names, from the manifest the installer already reads.
+latest_version() {
+    manifest="$(fetch "${RELEASES}/latest/download/${MANIFEST_NAME}" 2>/dev/null)" || manifest=""
+    [ -n "$manifest" ] || return 1
+    printf '%s\n' "$manifest" | awk '$1 == "version:" { print $2 }'
+}
+
+# The version recorded beside an installed copy by a previous run.
+installed_version() {
+    marker="${INSTALL_DIR}/${MARKER_NAME}"
+    [ -f "$marker" ] || return 1
+    awk '$1 == "version" { print $2 }' "$marker"
+}
+
+# 0 current, 1 update available, 2 cannot tell. Versions are compared as the
+# release stamp writes them, with any leading "v" removed, so nothing here has
+# to understand ordering.
+check() {
+    installed="$(installed_version)" ||
+        refuse "no installed copy in ${INSTALL_DIR}; run this installer without --check first"
+    latest="$(latest_version)" ||
+        refuse "no release manifest at ${RELEASES}/latest/download/${MANIFEST_NAME}"
+    installed="${installed#v}"
+    latest="${latest#v}"
+    if [ -z "$latest" ]; then
+        refuse "the release manifest names no version"
+    fi
+    if [ "$installed" = "$latest" ]; then
+        info "oxide-reins ${installed} is the latest release"
+        return 0
+    fi
+    info "oxide-reins ${installed} is installed; ${latest} is available"
+    return 1
+}
+
 verify_checksum() {
     file="$1"
     sums="$2"
@@ -125,6 +170,21 @@ verify_checksum() {
 }
 
 main() {
+    case "${1:-}" in
+        --check | check)
+            check
+            exit $?
+            ;;
+        --help | -h | help)
+            sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+            exit 0
+            ;;
+        "") ;;
+        *)
+            err "unknown argument: $1 (the only one is --check)"
+            ;;
+    esac
+
     command -v uname >/dev/null 2>&1 || err "uname is required"
     command -v tar >/dev/null 2>&1 || err "tar is required"
     command -v mktemp >/dev/null 2>&1 || err "mktemp is required"

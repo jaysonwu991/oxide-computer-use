@@ -40,7 +40,9 @@ writes `.oxide-reins-install`, naming the release, the version, the platform and
 the installed binary's SHA-256; `oxide-reins doctor` reports that marker and the
 build it is running.
 `OXIDE_REINS_INSTALL_DIR`, `OXIDE_REINS_VERSION` and `OXIDE_REINS_REPO`
-override where it goes and what it installs. There is no Linux or Windows
+override where it goes and what it installs. `sh install.sh --check` compares the
+installed copy with the latest release: exit 0 current, 1 update available,
+2 cannot tell. There is no Linux or Windows
 archive: the tools drive macOS APIs, so another platform builds to explicit
 "not implemented" errors — see [docs/install.md](docs/install.md).
 
@@ -81,7 +83,8 @@ oxide-reins apps deny "1Password"
 
 An approval is per app and can name the bundle identity it was given for, so a
 different app answering to the same name is refused; the app hosting this server
-is refused unless `apps self-automation allow` says otherwise. Each decision is re-read on
+and terminal emulators are refused unless `apps self-automation allow` or
+`apps terminals allow` says otherwise. Each decision is re-read on
 every call: `apps allow` approves from now on, `apps grant-once` approves one
 call, `apps revoke` withdraws every decision about one app, and `apps policy deny`
 refuses an app nobody has decided about. See
@@ -158,6 +161,7 @@ src/tools.rs       the tool schemas, dispatch and result shape
 src/install.rs     per-client config writing (JSON and TOML) and reserved names
 src/policy.rs      per-app approvals, bundle identities and the default policy
 src/runtime.rs     platform selection; macOS implementation, explicit stub elsewhere
+src/verify.rs      the verify command: one native check per path, with evidence
 src/macos/ax.rs    accessibility elements, attributes, actions, ranges
 src/macos/tree.rs  snapshot rendering and window binding
 src/macos/apps.rs  running apps and windows via the window server
@@ -165,7 +169,8 @@ src/macos/input.rs synthetic pointer, keyboard and scroll events
 src/macos/takeover.rs a listen-only event tap that yields to a person's input
 src/macos/screen.rs screenshot capture
 src/macos/cf.rs    Core Foundation bridging
-tests/cli.rs       binary-level checks: CLI, MCP handshake, installers, policy, UTF-8
+tests/cli.rs       binary-level checks: CLI, MCP handshake, installers, policy, resources, UTF-8
+tests/install.sh   installer update check against a staged release directory
 install.sh         the curl installer the releases serve
 scripts/           set-version.sh, which a release tag stamps into the crate
 .github/           CI, and the two release workflows: the drafter drafts the
@@ -207,6 +212,9 @@ docs/              install, clients, comparison, parity, issue audit
   the background, and `type_text`/`press_key` with `background: true` deliver keys
   to one process without activating it — an app that keeps its own key focus may
   ignore them, so the reply asks for verification.
+- `oxide-reins verify` proves what the machine can do (tree, capture, identity,
+  takeover tap, background typing) and exits nonzero when a path is missing; it
+  does not grant a permission.
 - The preview is a resource, not a stream: `resources/read` on
   `computer-use://screen` captures on demand, and a subscriber is told when a
   call may have changed the screen. Nothing is pushed on a timer.

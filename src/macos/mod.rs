@@ -212,7 +212,28 @@ impl Runtime {
         let pid = app.pid;
         self.policy.authorize(&app.name, || apps::identity(pid))?;
         self.check_self_automation(&app)?;
+        self.check_terminal(&app)?;
         Ok(app)
+    }
+
+    /// A terminal is a way to start another agent, so it is refused by default.
+    /// The identity decides when it can be read; the name list is the fallback.
+    fn check_terminal(&self, app: &apps::App) -> Result<()> {
+        if self.policy.terminals() == policy::Fallback::Allow {
+            return Ok(());
+        }
+        let identity = apps::identity(app.pid);
+        if !self.policy.is_terminal(&app.name, identity.as_ref()) {
+            return Ok(());
+        }
+        bail!(
+            "`{}` is a terminal{}, and the policy refuses terminal automation: typing into a shell can start another agent. Allow it with `oxide-reins apps terminals allow` if that is intended",
+            app.name,
+            match &identity {
+                Some(identity) => format!(" ({})", identity.bundle_id),
+                None => String::new(),
+            }
+        )
     }
 
     /// Refuse to drive the window this server is hosted in: an agent clicking its

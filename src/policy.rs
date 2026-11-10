@@ -5,7 +5,9 @@
 //! apps a person approved: an approval records the bundle identity it was given
 //! for, a name whose identity changed is refused, one approval can be spent on a
 //! single call, and every call re-reads the file so an approval or a revocation
-//! reaches a session that is already running.
+//! reaches a session that is already running. Two rules sit outside the per-app
+//! decisions because they are about loops rather than trust: the hosting bundle
+//! and terminal emulators are refused by default.
 
 // The enforcement half of this policy is reached from the macOS runtime; a build
 // for another platform only edits the decisions.
@@ -83,6 +85,33 @@ impl Access {
     }
 }
 
+/// Bundles whose job is a shell prompt. Driving one is how an agent starts
+/// another agent, which is the restriction Codex documents.
+pub const TERMINAL_BUNDLES: [&str; 9] = [
+    "com.apple.Terminal",
+    "com.googlecode.iterm2",
+    "com.mitchellh.ghostty",
+    "dev.warp.Warp-Stable",
+    "com.github.wez.wezterm",
+    "io.alacritty",
+    "net.kovidgoyal.kitty",
+    "org.tabby",
+    "co.zeit.hyper",
+];
+
+/// The same set by app name, for a build that cannot read a bundle identity.
+pub const TERMINAL_NAMES: [&str; 9] = [
+    "Terminal",
+    "iTerm2",
+    "Ghostty",
+    "Warp",
+    "WezTerm",
+    "Alacritty",
+    "kitty",
+    "Tabby",
+    "Hyper",
+];
+
 #[derive(Debug, Clone)]
 struct Grant {
     app: String,
@@ -101,6 +130,8 @@ struct Rules {
     one_time: Option<Grant>,
     /// `None` means the default: the app hosting this server is refused.
     self_automation: Option<Fallback>,
+    /// `None` means the default: terminals are refused.
+    terminals: Option<Fallback>,
 }
 
 impl Rules {
@@ -121,6 +152,10 @@ impl Rules {
 
     fn self_automation(&self) -> Fallback {
         self.self_automation.unwrap_or(Fallback::Deny)
+    }
+
+    fn terminals(&self) -> Fallback {
+        self.terminals.unwrap_or(Fallback::Deny)
     }
 
     fn is_default(&self) -> bool {
@@ -218,6 +253,10 @@ fn rules_from(value: &Value) -> Rules {
         one_time,
         self_automation: value
             .get("self_automation")
+            .and_then(Value::as_str)
+            .and_then(Fallback::parse),
+        terminals: value
+            .get("terminals")
             .and_then(Value::as_str)
             .and_then(Fallback::parse),
     }
@@ -321,6 +360,23 @@ impl Policy {
 
     pub fn self_automation(&self) -> Fallback {
         self.rules.borrow().self_automation()
+    }
+
+    pub fn terminals(&self) -> Fallback {
+        self.rules.borrow().terminals()
+    }
+
+    /// A bundle identity decides when it is known; the name list is the fallback
+    /// for a build that cannot read one, and never overrides a known identity.
+    pub fn is_terminal(&self, app: &str, identity: Option<&Identity>) -> bool {
+        match identity {
+            Some(identity) => TERMINAL_BUNDLES
+                .iter()
+                .any(|bundle| bundle.eq_ignore_ascii_case(identity.bundle_id.trim())),
+            None => TERMINAL_NAMES
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case(app.trim())),
+        }
     }
 
     pub fn one_time(&self) -> Option<String> {
@@ -481,6 +537,11 @@ impl Policy {
         self.save()
     }
 
+    pub fn set_terminals(&mut self, fallback: Fallback) -> Result<()> {
+        self.rules.get_mut().terminals = Some(fallback);
+        self.save()
+    }
+
     pub fn set_fallback(&mut self, fallback: Fallback) -> Result<()> {
         self.rules.get_mut().fallback = Some(fallback);
         self.save()
@@ -513,6 +574,9 @@ impl Policy {
         }
         if let Some(fallback) = rules.self_automation {
             value["self_automation"] = json!(fallback.name());
+        }
+        if let Some(fallback) = rules.terminals {
+            value["terminals"] = json!(fallback.name());
         }
         if let Some(grant) = &rules.one_time {
             let mut entry = json!({ "app": grant.app });
@@ -548,9 +612,13 @@ impl Policy {
             }
             Fallback::Allow => "\nSelf-automation: the hosting app is reachable too.",
         };
+        let terminals = match rules.terminals() {
+            Fallback::Deny => "\nTerminals: refused (`apps terminals allow` changes it).",
+            Fallback::Allow => "\nTerminals: reachable.",
+        };
         if rules.is_default() {
             return format!(
-                "No app policy: every app with Accessibility access is reachable.{automation}"
+                "No app policy: every app with Accessibility access is reachable.{automation}{terminals}"
             );
         }
         let mut out = match rules.fallback() {
@@ -582,6 +650,7 @@ impl Policy {
             out.push_str(&format!("\nDenied: {}", describe(&rules.denied)));
         }
         out.push_str(automation);
+        out.push_str(terminals);
         if let Some(grant) = &rules.one_time {
             out.push_str(&format!(
                 "\nOne-time approval: {} ({})",
@@ -766,6 +835,40 @@ mod tests {
         assert!(policy.one_time().is_none());
         assert!(policy.access("1Password", None).is_allowed());
         std::fs::remove_dir_all(path.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn terminals_are_refused_by_default_and_by_bundle_or_name() {
+        let policy = Policy::default();
+        assert_eq!(policy.terminals(), Fallback::Deny);
+        let term = Identity::new(
+            "com.apple.Terminal",
+            "/System/Applications/Utilities/Terminal.app",
+        );
+        assert!(policy.is_terminal("Terminal", Some(&term)));
+        assert!(policy.is_terminal(
+            "Terminal",
+            Some(&Identity::new(
+                "com.googlecode.iterm2",
+                "/Applications/iTerm.app"
+            ))
+        ));
+        assert!(
+            policy.is_terminal("Terminal", None),
+            "the name is the fallback"
+        );
+        assert!(!policy.is_terminal("TextEdit", None));
+        assert!(
+            !policy.is_terminal(
+                "Terminal",
+                Some(&Identity::new(
+                    "com.example.terminal",
+                    "/Applications/Terminal.app"
+                ))
+            ),
+            "a known identity decides, so a lookalike name is not a terminal"
+        );
+        assert!(policy.describe().contains("Terminals: refused"));
     }
 
     #[test]

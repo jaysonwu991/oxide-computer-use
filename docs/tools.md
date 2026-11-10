@@ -30,12 +30,18 @@ before any accessibility or input call (see
   bundle identifiers, both paths, and `apps allow` to re-approve;
 - a name with no decision under a default-deny policy → `apps grant-once` for one
   call and `apps allow` for every call;
+- a terminal, or the hosting app, under the rules that refuse them by default;
 - a non-empty allow list that excludes it → ``` `X` is not on the allow list ```
   with the current list.
 
 The file is re-read on every call, so an approval or a revocation made in a
 terminal lands in a running `mcp` server. An app marked `[approved for one call]`
 in `list_apps` has a one-time approval that the next call spends.
+
+**Terminals are refused** by the same gate, by bundle identity — driving a shell
+is how an agent starts another agent — unless `apps terminals allow` says
+otherwise. A single terminal cannot be exempted by name: the identity is
+authoritative, which is what keeps a renamed app from slipping through.
 
 **Self-automation** is a rule of its own, checked after the app policy: the app
 bundle that launched this server is refused by default, because an agent clicking
@@ -363,8 +369,9 @@ unpaced event, the usual cause of a drag that does nothing, is never posted.
 The drag yields to the person: a listen-only event tap watches for input that did
 not come from this process, and the first such keystroke, pointer movement or
 scroll releases the button at the last position and fails the call with "user
-takeover". Without the Accessibility grant the tap cannot be installed, and the
-drag then runs without that arbitration.
+takeover". A tap the window server refuses leaves the drag without that arbitration, and
+whether an installed tap receives a person's events is only proven on a granted
+machine; `oxide-reins verify` reports both.
 
 ### Taking over from the agent
 
@@ -387,6 +394,7 @@ next call starts from a fresh observation. Nothing is queued behind it.
 | One-time approval already spent | Refuses with the two approval commands. |
 | A person takes over during a drag or a long type | Releases the button, stops, and reports the takeover. |
 | The hosting app is named under a deny-self-automation policy | Refuses, naming the bundle and `apps self-automation allow`. |
+| A terminal is named under the default terminal rule | Refuses, naming the bundle and `apps terminals allow`. |
 | `background: true` without `app` | Refuses before changing focus or asking for a permission. |
 | The screen resource is read without Screen Recording | JSON-RPC error carrying the permission message. |
 | Missing Accessibility or Screen Recording | Refuses, naming the Settings pane. |

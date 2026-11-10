@@ -6,6 +6,7 @@ mod permissions;
 mod policy;
 mod runtime;
 mod tools;
+mod verify;
 
 use std::path::PathBuf;
 use std::process::Command as Process;
@@ -54,6 +55,20 @@ enum Command {
     Tools {
         /// Print each tool's description and input schema, which is what an
         /// agent's tool search reads.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Report what this machine can actually do, one native path at a time.
+    Verify {
+        /// App to read, and to type into with --input. Defaults to the first app
+        /// with a usable window.
+        #[arg(long)]
+        app: Option<String>,
+        /// Also type into the app with background delivery. This writes text to
+        /// it, so point --app at a scratch document.
+        #[arg(long)]
+        input: bool,
+        /// Print machine-readable JSON.
         #[arg(long)]
         json: bool,
     },
@@ -116,6 +131,11 @@ enum AppsCommand {
         /// allow or deny.
         mode: String,
     },
+    /// Decide whether terminal emulators may be driven.
+    Terminals {
+        /// allow or deny.
+        mode: String,
+    },
     /// Clear every decision and allow every app again.
     Reset,
 }
@@ -154,6 +174,14 @@ fn run() -> Result<()> {
             calls_file,
             sleep,
         }) => call(tool, args, calls, calls_file, sleep),
+        Some(Command::Verify { app, input, json }) => {
+            let mut runtime = Runtime::new();
+            let checks = verify::run(&mut runtime, app.as_deref(), input);
+            if !verify::report(&checks, json)? {
+                bail!("at least one native path is missing; the checks above name what to grant or pass")
+            }
+            Ok(())
+        }
         Some(Command::Doctor { json, prompt }) => doctor(json, prompt),
         Some(Command::Install {
             client,
@@ -311,6 +339,13 @@ fn apps(command: AppsCommand) -> Result<()> {
             policy.set_self_automation(fallback)?;
             println!("{}", policy.describe());
         }
+        AppsCommand::Terminals { mode } => {
+            let fallback = Fallback::parse(&mode).with_context(|| {
+                format!("`{mode}` is not a terminal policy; pass `allow` or `deny`")
+            })?;
+            policy.set_terminals(fallback)?;
+            println!("{}", policy.describe());
+        }
         AppsCommand::Reset => {
             policy.clear()?;
             println!(
@@ -381,6 +416,10 @@ fn doctor(as_json: bool, prompt: bool) -> Result<()> {
                 },
                 "one_time_approval": policy.one_time(),
                 "self_automation": match policy.self_automation() {
+                    Fallback::Allow => "allow",
+                    Fallback::Deny => "deny",
+                },
+                "terminals": match policy.terminals() {
                     Fallback::Allow => "allow",
                     Fallback::Deny => "deny",
                 },

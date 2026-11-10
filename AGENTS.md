@@ -5,7 +5,8 @@ app's accessibility tree, and the actions that drive it.
 
 ## Layout
 
-- `src/main.rs`: the CLI (`mcp`, `call`, `tools`, `doctor`, `install`, `apps`).
+- `src/main.rs`: the CLI (`mcp`, `call`, `tools`, `verify`, `doctor`, `install`,
+  `apps`).
 - `src/mcp.rs`: newline-delimited JSON-RPC over stdio; echoes the client's
   protocol revision when it is one of the three we answer. Publishes the
   `computer-use://screen` resource; a subscriber gets
@@ -19,6 +20,8 @@ app's accessibility tree, and the actions that drive it.
   other settings and comments survive.
 - `src/permissions.rs`: permission status in the MCP process, observed launching
   app bundle, and user-only setup guidance.
+- `src/verify.rs`: the `verify` command — one native check per path the tools
+  depend on, with the evidence, so a granted machine can prove them.
 - `src/policy.rs`: per-app approvals — allow, deny, allow-once, and the default
   for an app nobody decided about — enforced before any accessibility call. An
   approval can be pinned to a bundle identity, and the file is re-read on every
@@ -102,9 +105,11 @@ app's accessibility tree, and the actions that drive it.
 - `./target/debug/oxide-reins doctor`
 - `./target/debug/oxide-reins call list_apps`
 - `./target/debug/oxide-reins install --client codex --print`
-- `./target/debug/oxide-reins apps list` (and `apps allow|deny|revoke|grant-once|policy|reset`)
+- `./target/debug/oxide-reins apps list` (and `apps allow|deny|revoke|grant-once|policy|self-automation|terminals|reset`)
+- `./target/debug/oxide-reins verify --json` (the native matrix; add `--app` and
+  `--input` to prove background typing, which writes to that app)
 - `printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | ./target/debug/oxide-reins mcp`
-- `sh -n install.sh && ./scripts/set-version.sh v0.1.0` (the second rewrites `Cargo.toml`; revert it after)
+- `sh -n install.sh && sh tests/install.sh && ./scripts/set-version.sh v0.1.0` (the last rewrites `Cargo.toml`; revert it after)
 
 ## Conventions
 
