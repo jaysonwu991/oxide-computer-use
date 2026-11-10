@@ -66,6 +66,11 @@ app's accessibility tree. The number on the left of each line is the
   snapshot bound it to`) instead of hitting whatever is at that position now.
 - An index from a different app, or past the end of the snapshot, is refused and
   names the app and size it should belong to.
+- A snapshot that could not be read is not a snapshot. If the app stops
+  answering, the read fails after two seconds per message
+  (`kAXErrorCannotComplete`, naming the bound) and the previous snapshot stays
+  the newest one, so its indexes still address the app they came from. Nothing is
+  renumbered by guesswork.
 
 ### Reply shape
 
@@ -138,7 +143,9 @@ deny list, an allow list that excludes the app and a default-deny policy, and
 
 ### `get_app_state`
 
-Reads one app's accessibility tree.
+Reads one app's accessibility tree. A read that the app does not answer fails as
+an error within a two-second bound per message, instead of returning an empty or
+half-read tree that looks like a real answer.
 
 | Parameter | Type | Default | Meaning |
 | --- | --- | --- | --- |

@@ -213,8 +213,13 @@ docs/              install, clients, comparison, parity, issue audit
   to one process without activating it — an app that keeps its own key focus may
   ignore them, so the reply asks for verification.
 - `oxide-reins verify` proves what the machine can do (tree, capture, identity,
-  takeover tap, background typing) and exits nonzero when a path is missing; it
-  does not grant a permission.
+  read bound, takeover tap, background typing) and exits nonzero when a path is
+  missing; it does not grant a permission.
+- An app that stops answering fails the call within a two-second bound per
+  accessibility message instead of blocking the server, and the failure is
+  reported as a failure — not as an empty window. A tool call that breaks
+  internally is answered as an error too, so the connection survives it; a server
+  process that is killed is the client's to restart.
 - The preview is a resource, not a stream: `resources/read` on
   `computer-use://screen` captures on demand, and a subscriber is told when a
   call may have changed the screen. Nothing is pushed on a timer.

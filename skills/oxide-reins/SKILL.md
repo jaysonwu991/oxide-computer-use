@@ -75,6 +75,10 @@ Computer Use under the plain `computer-use` name; the tool names are identical e
   Settings → Privacy & Security → Accessibility, then restart the host. Do not approve permissions yourself.
 - `kAXErrorCannotComplete` — the app is busy, modal, or unresponsive. Wait, then
   read the tree again rather than repeating the click.
+- `could not read … accessibility tree` — the app stopped answering within the
+  two-second bound, so the read failed instead of returning an empty tree. The
+  previous snapshot is still the newest one and its indexes still address that
+  app; retry once the app answers instead of renumbering by guess.
 - `is no longer in the window the snapshot bound it to` or `out of range` — call
   `get_app_state` before retrying; the index no longer points at what you saw.
 - `reports AXValue as not settable` — use `click` to focus it and `type_text`

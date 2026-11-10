@@ -51,16 +51,19 @@ This machine has Accessibility and Screen Recording ungranted for the terminal,
 so these paths compile and are unit-tested but were not exercised against a live
 app: window binding and the `window` selector, `set_value`'s settability check
 and read-back, `select_text`, the paced drag, `AXPress` versus pointer clicks,
-`include_screenshot`'s window match, a live bundle identity from a running app,
-the takeover tap (which cannot even be installed without the grant),
+`include_screenshot`'s window match, a read from an app that has stopped
+answering, the takeover tap (which cannot even be installed without the grant),
 `background: true` delivery through `CGEventPostToPid` (whether a given app
 accepts it), the screen resource's capture, and refusing the hosting bundle or a
-terminal against a real `.app`. Three of those now report themselves:
+terminal against a real `.app`. Most of those now report themselves:
 `oxide-reins verify` prints a line per path with `ok`, `MISSING` or `skipped`, so a
-granted machine turns them into a report instead of a reading exercise. The
-config, protocol, policy decisions (including a decision written by another
-process reaching a running one), protocol negotiation and UTF-8 paths were
-verified end to end, and `list_apps` ran against the real window server.
+granted machine turns them into a report instead of a reading exercise, and two
+of its lines pass on an ungranted one — the bundle identity of a running app
+(`com.tencent.tenvideo at /Applications/QQLive.app`) and the two-second read bound
+the system accepts for it. The config, protocol, policy decisions (including a
+decision written by another process reaching a running one), protocol negotiation
+and UTF-8 paths were verified end to end, and `list_apps` ran against the real
+window server.
 
 To close that gap on a machine where the terminal is trusted:
 

@@ -39,7 +39,7 @@ where noted.
 
 | Where | Guards |
 | --- | --- |
-| `src/mcp.rs` tests | initialize shape (tools and a subscribable resource) and instructions that name every tool and the policy commands, revision echo (all three supported, unknown → newest), the screen resource listed and read by URI with an unknown-URI error, a capture turned into a PNG block, a subscribed client told once on subscribe and again only after an action, unsubscribe stopping that, notifications not answered, unknown method → `-32601`, tool failure → `isError` result |
+| `src/mcp.rs` tests | initialize shape (tools and a subscribable resource) and instructions that name every tool and the policy commands, revision echo (all three supported, unknown → newest), the screen resource listed and read by URI with an unknown-URI error, a capture turned into a PNG block, a subscribed client told once on subscribe and again only after an action, unsubscribe stopping that, notifications not answered, unknown method → `-32601`, tool failure → `isError` result, a call that panics answered as an error with the server still serving the next request |
 | `src/tools.rs` tests | every tool has a description, an object schema and a read-only hint; every description carries a word an agent actually searches for; observers are read-only and actions are not; names unique; result shape with and without an image; every tool documented in `docs/tools.md` and listed in the README table |
 | `src/install.rs` tests | client parsing and aliases, name validation (the names Claude Code and Codex already use are refused), per-client default names, JSON and TOML snippets |
 | `src/policy.rs` tests | empty policy allows all, deny beats allow, allow list excludes the rest, a changed bundle identity refused, a one-call approval spent and persisted away, an unreadable file refusing every app, a decision written by another process reaching a running policy, self-automation refused by default, save/load round trip |
@@ -47,6 +47,7 @@ where noted.
 | `src/macos/takeover.rs` tests | each kind of person input named, the tap mask covering buttons, movement, keys and scrolling, only a foreign event source counting as a person |
 | `src/macos/apps.rs` tests | the outermost `.app` wins for a nested helper, a binary outside a bundle has no identity, an unreadable bundle has no identifier |
 | `src/macos/tree.rs` tests | value truncation with true length, index/indent rendering, multi-line values flattened |
+| `src/macos/ax.rs` tests | only a code that means the app did not answer fails a read (an unsupported attribute and a vanished element stay absent, so one node cannot cost the snapshot), and the timeout error names the bound it hit |
 | `src/macos/mod.rs` tests | UTF-16 range math (including an emoji), case-insensitive fallback, output cap note, line-break counting in a `type_text` reply, a literal `\n` named in the reply, only the hosting bundle counting as driving itself, lenient argument parsing |
 | `src/verify.rs` tests | only a missing check fails the run (skipped does not), every state has a name, a refused permission names the Settings pane |
 | `tests/cli.rs` (verify) | `verify --json` names every check, each state is one of three values, and the exit status follows the missing count on a granted and an ungranted machine alike |
@@ -55,10 +56,12 @@ where noted.
 
 What they cannot cover: anything that needs Accessibility or Screen Recording —
 window binding, `set_value` read-back against a real control, `select_text`,
-paced drags, `AXPress` versus pointer clicks, window-scoped screenshots, a live
-bundle identity from a running app, and the takeover tap itself (its callback
-runs only once the grant exists).
-Those need a trusted terminal; the manual checklist below is the substitute.
+paced drags, `AXPress` versus pointer clicks, window-scoped screenshots, a read
+from an app that has stopped answering, and the takeover tap itself (its callback
+runs only once the grant exists). Two of those paths need no grant, and `verify`
+measures them: the bundle identity of a running app, and the read bound the system
+accepts for it. The rest need a trusted terminal; the manual checklist below is
+the substitute.
 
 ## Provenance
 
@@ -155,6 +158,10 @@ should do the same. Filter helper surfaces at the enumeration layer, as
   setup.
 - **No silent success** — check settability, read values back, list supported
   actions, refuse stale indexes by name.
+- **Bound every wait** — one accessibility message may wait two seconds for an
+  app; a read that times out fails the call and leaves the previous snapshot
+  addressable, because an unresponsive app must not look like an empty window. A
+  panic inside a call is an `isError` result, not the end of the session.
 - **Pace synthetic input** — one unpaced drag event is a bug report.
 - **Cap the output and say so** — context is the scarce resource in an agent
   loop.
@@ -184,6 +191,10 @@ oxide-reins call get_app_state --args '{"app":"TextEdit"}'   # allowed once, the
 oxide-reins apps revoke "TextEdit"
 oxide-reins apps self-automation deny
 oxide-reins call type_text --args '{"app":"TextEdit","text":"background","background":true}'
+# an app that stops answering must fail the read, not wedge the server
+pid=$(pgrep -x TextEdit); kill -STOP "$pid"
+oxide-reins call get_app_state --args '{"app":"TextEdit"}'
+kill -CONT "$pid"
 ```
 
 Expected: the click reports AXPress or a pointer event; `set_value` echoes the
@@ -201,7 +212,11 @@ against the hosting app is refused; with it allowed, the same call proceeds. Rea
 `computer-use://screen` once and then as a subscriber: the read returns a PNG,
 and each action is followed by one `notifications/resources/updated`. Then run
 the same sequence through `--calls` and confirm the indexes stay valid across
-calls.
+calls. The stopped app is the exception: its `get_app_state` fails with `the app
+did not answer within 2 seconds` instead of returning an empty tree, the previous
+snapshot's indexes still address what they came from, `oxide-reins tools` keeps
+answering from the same process, and the call after `kill -CONT` reads the tree
+again.
 
 ## Releasing
 

@@ -11,11 +11,12 @@ oxide-reins call get_app_state --args '{"app":"TextEdit","max_tree_nodes":200}'
 ```
 
 `verify` is the newest of these and the most specific: one line per path — the
-accessibility tree, a capture, a bundle identity, the takeover tap, background
-typing — with `ok`, `MISSING` or `skipped` and the reason. `--json` is the same
-report for a script, `--app` chooses what to read, and `--input` additionally
-types into it (it writes text, so point it at a scratch document). A `MISSING`
-permission is granted to the app that launched the server, never by the server.
+accessibility tree, a capture, a bundle identity, the read bound, the takeover
+tap, background typing — with `ok`, `MISSING` or `skipped` and the reason.
+`--json` is the same report for a script, `--app` chooses what to read, and
+`--input` additionally types into it (it writes text, so point it at a scratch
+document). A `MISSING` permission is granted to the app that launched the server,
+never by the server.
 
 `doctor --json` gives the same information for a script:
 
@@ -85,6 +86,7 @@ macOS shows a given app's prompt once. If it was dismissed, open System Settings
 | ``element_index N is out of range`` | The snapshot was replaced, or the index came from an earlier read | Call `get_app_state` or `query` again and use its numbers |
 | ``the cached elements belong to `A`, not `B` `` | Acting on one app with another app's indexes | Read the state of the app you are acting on |
 | ``is no longer in the window the snapshot bound it to`` | The element moved, a window closed, or a tab/window switched | Read again; do not retry the same index |
+| ``could not read X's accessibility tree`` | The app stopped answering within the two-second bound: it is busy, showing a modal sheet, or hung | The failed read did not replace the newest snapshot, so indexes from the reply before it still address that app. Retry once the app answers; do not renumber by guessing |
 | ``the element changed since the snapshot`` | The app rebuilt its tree between read and act | Same: read, then act |
 | ``has no on-screen frame`` | The element reports no position (some groups and virtual nodes) | Use `include_frames` with a neighbouring element, or `click` with `x`/`y` |
 
@@ -106,8 +108,10 @@ stable identifier.
 
 ## macOS accessibility errors
 
-The server prefixes these with the call that failed, for example
-`AXPress failed: kAXErrorCannotComplete (-25204) (the app did not answer; …)`.
+The server prefixes these with the call that failed. A timed-out read reads
+`reading AXChildren failed: kAXErrorCannotComplete (-25204)` followed by the
+reason: the app did not answer within two seconds, so it is busy, showing a modal
+sheet, or unresponsive.
 
 | Code | Name | Usually means | What to do |
 | --- | --- | --- | --- |
@@ -116,7 +120,7 @@ The server prefixes these with the call that failed, for example
 | -25201 | `kAXErrorIllegalArgument` | The server passed something the app rejected | Report it with the element's role |
 | -25202 | `kAXErrorInvalidUIElement` | The element is gone | `get_app_state` again |
 | -25203 | `kAXErrorInvalidUIElementObserver` | Observation handle is invalid | Does not apply to this server |
-| -25204 | `kAXErrorCannotComplete` | App is busy, modal, or hung | Wait, dismiss the sheet, then read state |
+| -25204 | `kAXErrorCannotComplete` | App is busy, modal, or hung | Wait, dismiss the sheet, then read state. Reads are bounded at two seconds, so this arrives as a failed call rather than a partial tree |
 | -25205 | `kAXErrorAttributeUnsupported` | The element has no such attribute | Use another attribute or a different tool |
 | -25206 | `kAXErrorActionUnsupported` | The element has no such action | `perform_secondary_action` lists supported actions |
 | -25207 | `kAXErrorNotificationUnsupported` | Notifications unsupported | Does not apply |
@@ -127,6 +131,14 @@ The server prefixes these with the call that failed, for example
 | -25212 | `kAXErrorNoValue` | No value for that attribute | Element is stale or empty; read again |
 | -25213 | `kAXErrorParameterizedAttributeUnsupported` | Range-based text reads unsupported | `select_text` cannot work on that element |
 | -25214 | `kAXErrorNotEnoughPrecision` | Coordinate conversion lost precision | Use `include_frames` coordinates |
+
+`kAXErrorCannotComplete` (`-25204`) and `kAXErrorAPIDisabled` (`-25211`) are the
+two codes that fail a read: the first is the app missing the two-second bound,
+the second is Accessibility going away mid-call. Every other code means this
+element has nothing to give, and the tree is walked past it. A `stopped with an
+internal error` message is a bug in this server rather than in your setup: the
+call was answered as an error, the connection still works, and the line plus the
+call that produced it is what a report needs.
 
 ## Screen capture
 
