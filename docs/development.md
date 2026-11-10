@@ -48,6 +48,9 @@ where noted.
 | `src/macos/apps.rs` tests | the outermost `.app` wins for a nested helper, a binary outside a bundle has no identity, an unreadable bundle has no identifier |
 | `src/macos/tree.rs` tests | value truncation with true length, index/indent rendering, multi-line values flattened |
 | `src/macos/mod.rs` tests | UTF-16 range math (including an emoji), case-insensitive fallback, output cap note, line-break counting in a `type_text` reply, a literal `\n` named in the reply, only the hosting bundle counting as driving itself, lenient argument parsing |
+| `src/verify.rs` tests | only a missing check fails the run (skipped does not), every state has a name, a refused permission names the Settings pane |
+| `tests/cli.rs` (verify) | `verify --json` names every check, each state is one of three values, and the exit status follows the missing count on a granted and an ungranted machine alike |
+| `tests/install.sh` | `install.sh --check` against a staged release directory through `file://`: current exits 0, behind exits 1 and names both versions, no installed copy and no manifest exit 2 |
 | `tests/cli.rs` | tool list, MCP handshake with a real subprocess, installers writing every client's file, merge preserving other settings (including Codex's own `[computer_use]` table), reserved-name refusal, policy round trip with `revoke`/`grant-once`/`policy deny`, the self-automation rule and its `doctor` report, an unreadable policy refusing every app, `doctor --json` provenance, `tools --json`, a stdio session that subscribes to the screen resource and receives its notification after an action, UTF-8 through stdio, unknown tool exit code, `--calls-file` error naming the resolved path |
 
 What they cannot cover: anything that needs Accessibility or Screen Recording —

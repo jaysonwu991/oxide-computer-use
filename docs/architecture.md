@@ -30,6 +30,7 @@ flowchart TD
 | `src/install.rs` | Writes each client's config: JSON via `serde_json`, Codex's TOML via `toml_edit` (round-trip, comments kept), atomic rename; refuses a name the client already uses. | no |
 | `src/policy.rs` | Per-app approvals: the deny list, the allow list, bundle identities pinned to an approval, one-call approvals, the default policy. Re-reads the file on every call. | no |
 | `src/runtime.rs` | Picks the backend. macOS is real; other platforms get a stub whose every method returns an error, so the tool list stays identical. | no |
+| `src/verify.rs` | The `verify` command: exercises each native path the tools depend on and reports the evidence, so an unverifiable behaviour becomes one command | no |
 | `src/macos/mod.rs` | `Runtime`: resolve app, guard permissions, snapshot, act, verify. | no |
 | `src/macos/ax.rs` | `AXUIElement` wrapper: attributes, actions, settability, text ranges, trust. | yes |
 | `src/macos/tree.rs` | Renders the tree, numbers it, binds each node to its `AXWindow`, truncates explicitly. | no |
@@ -123,8 +124,9 @@ runtime posts carries its own process id as the source, and a person's hardware
 input does not, so one comparison in the tap callback separates the two. The
 first keystroke, pointer movement or scroll from anyone else releases what is
 held and fails the call with `user takeover`, rather than fighting the pointer.
-Without the Accessibility grant the tap cannot be installed and a gesture runs
-without that arbitration.
+A tap the window server refuses leaves the gesture without that arbitration, and
+whether an installed tap receives a person's events is only proven on a granted
+machine; `oxide-reins verify` reports both.
 
 `type_text` and `press_key` take `background`, which aims the same events at one
 process with `CGEventPostToPid` instead of the HID tap: the app is not activated

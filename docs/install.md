@@ -18,6 +18,7 @@ its SHA-256 against the published `.sha256`, and installs the binary to
 | `OXIDE_REINS_INSTALL_DIR` | `$HOME/.local/bin` | Where the binary goes. |
 | `OXIDE_REINS_VERSION` | latest release | A version to pin, with or without the leading `v`. |
 | `OXIDE_REINS_REPO` | `jaysonwu991/oxide-reins` | The repository to install from, for a fork or a mirror. |
+| `OXIDE_REINS_RELEASES` | `https://github.com/<repo>/releases` | Where the manifest and archives come from; a `file://` base is how the offline check in `tests/install.sh` runs. |
 
 A pinned version skips the release manifest and fetches
 `releases/download/v<version>/oxide-reins-<platform>.tar.gz` directly. Without
@@ -35,6 +36,28 @@ cat ~/.local/bin/.oxide-reins-install   # source jaysonwu991/oxide-reins
 To update, rerun the installer; there is no self-update subcommand. To remove
 it, delete the binary, the marker and the client entry
 `oxide-reins install` wrote.
+
+## Checking for an update
+
+```sh
+sh install.sh --check
+```
+
+It compares the version in the marker beside the installed binary
+(`.oxide-reins-install`) with the version the latest release's manifest names, and
+exits 0 when they match, 1 when an update is available, and 2 when it cannot tell
+— no installed copy, or no reachable manifest. Versions are compared as the
+release stamps them with any leading `v` removed, so nothing in the script
+interprets ordering.
+
+The check reads only the manifest: it downloads no archive and changes nothing.
+Re-running the installer is how an update is applied, and it rewrites the marker
+— version, platform and SHA-256 of the installed binary — from what it actually
+put in place.
+
+`tests/install.sh` runs all four outcomes against a staged release directory
+through `file://`, with no network and no macOS API, and CI runs it on every
+change.
 
 ## Release assets
 

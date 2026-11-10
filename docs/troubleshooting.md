@@ -5,9 +5,17 @@ where almost every problem lives.
 
 ```sh
 oxide-reins doctor                     # permissions, policy, versions
+oxide-reins verify                     # each native path, with the evidence
 oxide-reins call list_apps             # what the window server reports
 oxide-reins call get_app_state --args '{"app":"TextEdit","max_tree_nodes":200}'
 ```
+
+`verify` is the newest of these and the most specific: one line per path — the
+accessibility tree, a capture, a bundle identity, the takeover tap, background
+typing — with `ok`, `MISSING` or `skipped` and the reason. `--json` is the same
+report for a script, `--app` chooses what to read, and `--input` additionally
+types into it (it writes text, so point it at a scratch document). A `MISSING`
+permission is granted to the app that launched the server, never by the server.
 
 `doctor --json` gives the same information for a script:
 

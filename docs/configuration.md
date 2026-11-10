@@ -57,7 +57,8 @@ does reserve is refused with that explanation. Names may contain letters, digits
     }
   },
   "one_time_grant": { "app": "Preview" },
-  "self_automation": "allow"
+  "self_automation": "allow",
+  "terminals": "allow"
 }
 ```
 
@@ -91,6 +92,15 @@ Semantics:
   `oxide-reins mcp` server that is already running; nothing has to be restarted.
 - **A file that does not parse refuses every app**, with a message naming the
   path and `apps reset`, instead of falling back to "unlisted, so allowed".
+- **Terminals are refused by default.** A terminal is a way to start another
+  agent, so an app whose bundle is one of the known shells (`Terminal`, `iTerm2`,
+  `Ghostty`, `Warp`, `WezTerm`, `Alacritty`, `kitty`, `Tabby`, `Hyper`) is
+  refused before any accessibility call. The bundle identity decides; the name is
+  the fallback only when no identity can be read, so a lookalike name is not
+  caught. `"terminals": "allow"` (or `apps terminals allow`) lifts it, and a
+  single terminal can be exempted without lifting the rest by name only if the
+  identity is unreadable — prefer the policy switch. The refusal names the bundle
+  and the command.
 - **Self-automation is refused by default.** The app bundle that launched the
   server — the parent app the MCP host runs under, found by walking up to a
   `.app` — may not be driven, because an agent clicking its own window is a loop.
@@ -110,6 +120,7 @@ oxide-reins apps deny "1Password"       # always wins
 oxide-reins apps revoke "Finder"        # withdraw every decision about one app, a deny included
 oxide-reins apps policy deny            # an app with no decision is refused
 oxide-reins apps self-automation allow  # let the hosting app be driven too
+oxide-reins apps terminals allow       # let terminal emulators be driven
 oxide-reins apps reset                  # clear everything and allow every app again
 ```
 
@@ -166,8 +177,10 @@ connection and verify the recipient in System Settings. Existing grants to
 Oxide.app do not grant the helper access. Moving/rebuilding a development bundle
 can affect attribution or leave a stale entry; recheck grants after reconnecting.
 
-`oxide-reins doctor` reports both, plus the policy, the self-automation rule, its
-path and the build it runs (see [provenance](development.md#provenance)).
+`oxide-reins doctor` reports both, plus the policy, the self-automation and
+terminal rules, its path and the build it runs (see
+[provenance](development.md#provenance)). `oxide-reins verify` exercises each
+native path and prints the evidence.
 `oxide-reins doctor --prompt` asks macOS to show the prompts. Neither can grant
 on your behalf; only System Settings can.
 

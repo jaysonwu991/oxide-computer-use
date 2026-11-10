@@ -98,12 +98,12 @@ unlock/display covering/relock, terminal and self-automation policy equivalence.
 - None of this is a runtime feature. The server drives a browser through
   accessibility like any other app, and `list_apps`/`get_app_state` are the whole
   surface.
-- **Policy equivalence is partial:** the app policy applies to every window
-  owner, so a terminal is subject to the same decisions as any other app, and the
-  hosting app is additionally refused unless self-automation is allowed. Codex is
-  documented as restricting terminal automation more broadly; that is a product
-  decision about which apps may be driven, not a runtime mechanism, and it is
-  expressible here with `apps deny` per terminal or `apps policy deny`.
+- **Policy equivalence: implemented for the two rules Codex documents.** A
+  terminal — by bundle identity, over nine known emulators — is refused before any
+  accessibility call, and so is the hosting app, unless `apps terminals allow` or
+  `apps self-automation allow` says otherwise. Both refusals name the bundle and
+  the command. What is not equivalent is enforcement inside the client: Oxide's own
+  tool approvals remain a separate gate.
 - **Absent:** unlocking, covering the display and relocking — this runtime never
   asks for a password and never hides a screen — and the built-in browser and
   native `@App` picker, which are client surfaces.
@@ -123,8 +123,11 @@ installer/update integration, stable signing/grants across updates.*
   binary for `aarch64-apple-darwin` and `x86_64-apple-darwin` on every change,
   using the same commands the release workflow uses, instead of discovering a
   broken target at tag time.
-- **Installer/update:** `install.sh` still installs one version at a time and
-  verifies the release's SHA-256; there is no self-update command.
+- **Installer update check: implemented here.** `install.sh --check` compares the
+  marker's version with the latest release's manifest and exits 0, 1 or 2 without
+  downloading an archive, and `tests/install.sh` runs all four outcomes offline in
+  CI. Applying an update is re-running the installer, which rewrites the marker
+  from what it installed.
 - **Absent:** notarization. This repository ships unsigned archives (the helper's
   app bundle is ad-hoc signed by its build script). Stable signing and surviving
   macOS grants across updates stay unfinished, and are the reason the installer
@@ -143,7 +146,7 @@ but was **not** exercised on a granted machine:
 | --- | --- |
 | Permission prompts and System Settings entries | Unverified; the developer machine has neither grant, so `doctor` reports both missing. |
 | A live bundle identity from a running app | Unverified end to end; the pure path/bundle logic and the missing-bundle path are tested. |
-| The takeover tap's callback | Unverified; `CGEventTapCreate` returns null without the grant, and the tests cover only the comparison and the mask. |
+| The takeover tap's callback | The tap installs on an ungranted machine (measured), but whether it receives a person's events needs one; the tests cover the comparison and the mask, and `verify` reports the install. |
 | Background delivery (`CGEventPostToPid`) | Unverified; the argument handling and the reply are tested, but whether a given app accepts posted-to-pid keys needs the grant and a list of apps. |
 | The screen resource | The protocol path is tested end to end (list, read, subscribe, notification); the capture itself needs Screen Recording, so a read here returns the permission error. |
 | Refusing the hosting app | Unverified end to end; the comparison is unit-tested, but a real hosting bundle needs a client that launches the server as a child of an `.app`. |

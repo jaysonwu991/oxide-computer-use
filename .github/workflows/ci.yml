@@ -20,6 +20,8 @@ jobs:
         run: |
           sh -n install.sh
           bash -n scripts/set-version.sh
+      - name: Installer update check
+        run: sh tests/install.sh
 
   # Every release archive is built for both Mac architectures, so both have to
   # compile on each change rather than for the first time at tag time.

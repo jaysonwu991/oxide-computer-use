@@ -488,6 +488,79 @@ fn a_subscribed_client_hears_that_the_screen_may_have_changed() {
 }
 
 #[test]
+fn verify_reports_every_native_path_and_exits_on_a_missing_one() {
+    let (stdout, stderr, ok) = run(&["verify", "--json"]);
+    assert!(
+        !stdout.is_empty(),
+        "verify prints its report even when a check fails: {stderr}"
+    );
+    let report: Value = serde_json::from_str(&stdout).unwrap();
+    let checks = report["checks"].as_array().expect("checks is an array");
+    let names: Vec<&str> = checks
+        .iter()
+        .filter_map(|check| check["name"].as_str())
+        .collect();
+    for expected in [
+        "accessibility",
+        "screen recording",
+        "window server",
+        "accessibility tree",
+        "bundle identity",
+        "screenshot",
+        "takeover tap",
+        "background input",
+        "app policy",
+    ] {
+        assert!(
+            names.contains(&expected),
+            "{expected} is missing: {names:?}"
+        );
+    }
+    for check in checks {
+        assert!(
+            matches!(
+                check["state"].as_str(),
+                Some("ok") | Some("missing") | Some("skipped")
+            ),
+            "{check}"
+        );
+    }
+    let missing = report["missing"].as_u64().unwrap_or(0);
+    assert_eq!(
+        ok,
+        missing == 0,
+        "the exit status follows the missing count, whatever this machine grants: {stdout}"
+    );
+}
+
+#[test]
+fn the_terminal_rule_round_trips_through_the_cli() {
+    let home = temporary_home("terminals");
+    let (stdout, _, ok) = run_with_home(&home, &["apps", "list"]);
+    assert!(ok, "{stdout}");
+    assert!(stdout.contains("Terminals: refused"), "{stdout}");
+
+    let (stdout, _, _) = run_with_home(&home, &["doctor", "--json"]);
+    let status: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(status["terminals"], json!("deny"));
+
+    let (stdout, _, ok) = run_with_home(&home, &["apps", "terminals", "allow"]);
+    assert!(ok, "{stdout}");
+    assert_eq!(config_of(&home)["terminals"], json!("allow"));
+    assert!(stdout.contains("Terminals: reachable"), "{stdout}");
+
+    let (_, stderr, ok) = run_with_home(&home, &["apps", "terminals", "sometimes"]);
+    assert!(!ok);
+    assert!(stderr.contains("allow"), "{stderr}");
+
+    let (_, _, ok) = run_with_home(&home, &["apps", "reset"]);
+    assert!(ok);
+    assert!(config_of(&home).get("terminals").is_none());
+
+    std::fs::remove_dir_all(&home).ok();
+}
+
+#[test]
 fn a_key_spelling_is_checked_before_a_permission_is_asked_for() {
     let (stdout, _, ok) = run(&["call", "press_key", "--args", "{\"key\":\"f13\"}"]);
     assert!(!ok, "a key that does not exist is refused");

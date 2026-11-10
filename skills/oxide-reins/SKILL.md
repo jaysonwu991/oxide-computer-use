@@ -67,6 +67,9 @@ Computer Use under the plain `computer-use` name; the tool names are identical e
 - `is the app hosting this MCP server` — self-automation is refused. Ask the user
   whether they want the hosting app driven at all; `apps self-automation allow`
   is their decision, not yours.
+- `is a terminal` — terminal automation is refused by default. If the user asked
+  for something in a terminal, tell them the policy refuses it and let them
+  decide about `apps terminals allow`; do not route around it with another app.
 - `Accessibility permission is missing` — the app hosting the server is not
   trusted. Call `permissions` in this MCP connection and ask the user to approve the reported host in System
   Settings → Privacy & Security → Accessibility, then restart the host. Do not approve permissions yourself.

@@ -4,8 +4,10 @@
 //! person's hardware input is not, so one comparison between the tap callback
 //! and our pid separates "the person is using this Mac" from "this is the event
 //! we just posted". A paced gesture pumps the tap between steps and yields
-//! instead of fighting the pointer. Without the Accessibility grant the tap
-//! cannot be installed; a gesture then runs unarbitrated rather than failing.
+//! instead of fighting the pointer. A tap that cannot be installed leaves the
+//! gesture unarbitrated rather than failing it, and whether an installed tap
+//! receives a person's events is only proven on a granted machine:
+//! `oxide-reins verify` reports the install and whether the grant exists.
 
 use std::cell::Cell;
 use std::ffi::c_void;
