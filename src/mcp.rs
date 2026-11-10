@@ -348,7 +348,7 @@ mod tests {
             "jsonrpc": "2.0",
             "id": 5,
             "method": "tools/call",
-            "params": { "name": "click", "arguments": { "app": "TextEdit", "x": 10, "y": 10 } }
+            "params": { "name": "click", "arguments": { "app": "TextEdit" } }
         }));
         let notifications = server.drain();
         assert_eq!(notifications.len(), 1, "{notifications:?}");
@@ -377,7 +377,7 @@ mod tests {
             "jsonrpc": "2.0",
             "id": 11,
             "method": "tools/call",
-            "params": { "name": "click", "arguments": { "app": "TextEdit", "x": 10, "y": 10 } }
+            "params": { "name": "click", "arguments": { "app": "TextEdit" } }
         }));
         assert!(server.drain().is_empty());
     }

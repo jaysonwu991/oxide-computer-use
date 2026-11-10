@@ -428,7 +428,7 @@ fn a_subscribed_client_hears_that_the_screen_may_have_changed() {
         json!({"jsonrpc": "2.0", "id": 2, "method": "resources/list"}),
         json!({"jsonrpc": "2.0", "id": 3, "method": "resources/subscribe", "params": {"uri": "computer-use://screen"}}),
         json!({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "permissions", "arguments": {}}}),
-        json!({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "click", "arguments": {"app": "TextEdit", "x": 10, "y": 10}}}),
+        json!({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "click", "arguments": {"app": "TextEdit"}}}),
     ] {
         writeln!(stdin, "{request}").unwrap();
     }
@@ -497,11 +497,18 @@ fn a_key_spelling_is_checked_before_a_permission_is_asked_for() {
         "the refusal should name a key that works: {stdout}"
     );
 
-    // A literal backslash-n is the Return key, so it gets past the key check and
-    // stops at the permission gate instead.
+    // A literal backslash-n is the Return key, so it gets past the key check. What
+    // happens next depends on the machine: a trusted process presses it, an
+    // untrusted one stops at the permission gate. Neither is a refusal.
     let (stdout, _, _) = run(&["call", "press_key", "--args", "{\"key\":\"\\\\n\"}"]);
-    assert!(!stdout.contains("unknown key"), "{stdout}");
-    assert!(stdout.contains("Accessibility"), "{stdout}");
+    assert!(
+        !stdout.contains("unknown key"),
+        "a literal backslash-n is a key, not a spelling mistake: {stdout}"
+    );
+    assert!(
+        stdout.contains("Pressed `Return`") || stdout.contains("Accessibility"),
+        "the escape has to reach the key path: {stdout}"
+    );
 }
 
 #[test]
