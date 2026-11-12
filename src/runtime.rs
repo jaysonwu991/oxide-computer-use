@@ -10,7 +10,10 @@ pub struct State {
 #[cfg(target_os = "macos")]
 pub use crate::macos::Runtime;
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+pub use crate::windows::Runtime;
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod unsupported {
     use anyhow::{bail, Result};
     use serde_json::Value;
@@ -99,5 +102,5 @@ mod unsupported {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 pub use unsupported::Runtime;

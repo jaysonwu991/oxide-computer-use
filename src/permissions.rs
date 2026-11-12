@@ -1,12 +1,15 @@
+#[cfg(target_os = "macos")]
 use std::process::Command;
 
 use serde_json::{json, Value};
 
+#[cfg(target_os = "macos")]
 fn app_bundle(executable: &str) -> Option<String> {
     let end = executable.find(".app/Contents/")? + 4;
     Some(executable[..end].to_string())
 }
 
+#[cfg(target_os = "macos")]
 pub fn launching_app() -> Option<String> {
     let mut pid = std::process::id();
     for _ in 0..32 {
@@ -32,7 +35,23 @@ pub fn launching_app() -> Option<String> {
     None
 }
 
+#[cfg(target_os = "windows")]
+pub fn launching_app() -> Option<String> {
+    None
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+pub fn launching_app() -> Option<String> {
+    None
+}
+
 pub fn guidance() -> String {
+    if cfg!(target_os = "windows") {
+        return "Windows Computer Use runs in the active desktop session. Keep the target app visible, \
+                stop the task or use a secondary device before taking over foreground input, and use \
+                Windows settings only for feature-specific controls. A managed device may restrict Computer Use."
+            .to_string();
+    }
     let host = launching_app()
         .map(|path| format!("the launching app `{path}`"))
         .unwrap_or_else(|| {
@@ -61,6 +80,7 @@ pub fn status() -> Value {
 mod tests {
     use super::*;
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn finds_the_outer_app_bundle_in_helper_and_harness_paths() {
         assert_eq!(

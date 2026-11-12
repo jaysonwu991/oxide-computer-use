@@ -7,8 +7,11 @@ mod policy;
 mod runtime;
 mod tools;
 mod verify;
+#[cfg(target_os = "windows")]
+mod windows;
 
 use std::path::PathBuf;
+#[cfg(target_os = "macos")]
 use std::process::Command as Process;
 
 use anyhow::{bail, Context, Result};
@@ -23,7 +26,7 @@ use runtime::Runtime;
 #[command(
     name = "oxide-computer-use",
     version,
-    about = "Computer Use MCP server for any agent: Oxide, Claude Code, Codex or Cursor, driving macOS apps through native accessibility APIs"
+    about = "Computer Use MCP server for any agent: Oxide, Claude Code, Codex or Cursor, driving macOS and Windows apps through native accessibility APIs"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -508,7 +511,12 @@ fn accessibility(prompt: bool) -> bool {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+fn accessibility(_prompt: bool) -> bool {
+    true
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn accessibility(_prompt: bool) -> bool {
     false
 }
@@ -522,7 +530,12 @@ fn screen_recording(prompt: bool) -> bool {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+fn screen_recording(_prompt: bool) -> bool {
+    true
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn screen_recording(_prompt: bool) -> bool {
     false
 }

@@ -252,11 +252,64 @@ fn native(runtime: &mut Runtime, app: Option<&str>, input: bool) -> Vec<Check> {
     checks
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+fn native(runtime: &mut Runtime, app: Option<&str>, input: bool) -> Vec<Check> {
+    let apps = runtime
+        .list_apps(false)
+        .and_then(|text| Ok(serde_json::from_str::<Value>(&text)?));
+    let apps = match apps {
+        Ok(Value::Array(apps)) => apps,
+        Ok(_) => Vec::new(),
+        Err(error) => {
+            return vec![Check::missing("UI Automation", format!("{error:#}"))];
+        }
+    };
+    let Some(first) = apps.first() else {
+        return vec![Check::missing(
+            "window server",
+            "no Windows app with a usable top-level window is running",
+        )];
+    };
+    let name = app
+        .map(str::to_string)
+        .or_else(|| first["displayName"].as_str().map(str::to_string))
+        .unwrap_or_default();
+    let mut checks = vec![Check::from_result(
+        "UI Automation tree",
+        runtime
+            .get_app_state(&json!({ "app": name }))
+            .map(|state| format!("read {} characters", state.text.chars().count())),
+    )];
+    checks.push(Check::from_result(
+        "screenshot",
+        runtime
+            .screenshot(&json!({}))
+            .map(|bytes| format!("captured {} KB PNG", bytes.len() / 1024)),
+    ));
+    checks.push(if !input {
+        Check::skipped(
+            "foreground input",
+            "pass --input to type into the app; Windows Computer Use uses the foreground desktop",
+        )
+    } else {
+        Check::from_result(
+            "foreground input",
+            runtime
+                .type_text(&json!({
+                    "app": name,
+                    "text": "oxide-computer-use verify"
+                }))
+                .map(|reply| reply.replace('\n', " ")),
+        )
+    });
+    checks
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn native(_runtime: &mut Runtime, _app: Option<&str>, _input: bool) -> Vec<Check> {
     vec![Check::skipped(
         "native backend",
-        "computer use is macOS only; this build returns an error from every tool",
+        "computer use is implemented on macOS and Windows; this build returns an error from every tool",
     )]
 }
 

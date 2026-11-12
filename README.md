@@ -48,8 +48,8 @@ build it is running.
 `OXIDE_COMPUTER_USE_INSTALL_DIR`, `OXIDE_COMPUTER_USE_VERSION` and `OXIDE_COMPUTER_USE_REPO`
 override where it goes and what it installs. `sh install.sh --check` compares the
 installed copy with the latest release: exit 0 current, 1 update available,
-2 cannot tell. There is no Linux or Windows
-archive: the tools drive macOS APIs, so another platform builds to explicit
+2 cannot tell. Windows builds use UI Automation and foreground SendInput;
+macOS builds use Accessibility and CoreGraphics. Linux builds return explicit
 "not implemented" errors — see [docs/install.md](docs/install.md).
 
 ## Build from source
@@ -290,16 +290,16 @@ record — with commands, evidence and what is still unverified — is
 - **A signed, notarized download** — needs a Developer ID certificate. Releases
   are unsigned archives with a SHA-256, a manifest, an install marker and
   `install.sh --check`.
-- **A Windows backend** — a second implementation, not a build flag. Other
-  platforms build the same tool list over a stub whose every tool returns an
-  explicit error.
+- **A Windows backend** — now implemented over UI Automation, foreground
+  SendInput and GDI capture. It follows Windows' foreground model and does not
+  provide macOS-style background operation.
 - **Pushed frames** — a stream would be bytes no client in this setup reads. The
   preview is a resource read plus an update notification.
 
 ## Limits
 
-- macOS only: another platform builds the same tool list over a stub that returns
-  an explicit error. There is no Windows backend, and no desktop of its own — the
+- macOS and Windows: Linux builds retain the same tool list over a stub whose
+  every tool returns an explicit error. There is no desktop of its own — the
   real pointer moves during a drag, pointer input activates the target app, and a
   killed server is a new server on the client's next start.
 - Pointer input needs the target app in front. `set_value` and `AXPress` work in
