@@ -63,12 +63,12 @@ jobs:
       - name: Package
         run: |
           set -euo pipefail
-          asset="oxide-reins-${{ matrix.platform }}.tar.gz"
+          asset="oxide-computer-use-${{ matrix.platform }}.tar.gz"
           staged="$(mktemp -d)"
-          cp "target/${{ matrix.target }}/release/oxide-reins" "${staged}/oxide-reins"
+          cp "target/${{ matrix.target }}/release/oxide-computer-use" "${staged}/oxide-computer-use"
           (
             cd "${staged}"
-            tar -czf "${asset}" oxide-reins
+            tar -czf "${asset}" oxide-computer-use
             if command -v sha256sum >/dev/null 2>&1; then
               sha256sum "${asset}" > "${asset}.sha256"
             else
@@ -80,13 +80,44 @@ jobs:
         with:
           name: asset-${{ matrix.platform }}
           path: |
-            oxide-reins-*.tar.gz
-            oxide-reins-*.tar.gz.sha256
+            oxide-computer-use-*.tar.gz
+            oxide-computer-use-*.tar.gz.sha256
+          if-no-files-found: error
+
+  windows:
+    name: build windows-x64
+    needs: check
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Stamp the tag into the crate
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/set-version.sh "${GITHUB_REF_NAME}"
+          cargo update --workspace
+      - name: Build
+        run: cargo build --release --locked
+      - name: Package
+        shell: pwsh
+        run: |
+          $asset = "oxide-computer-use-windows-x64.zip"
+          Compress-Archive -Path "target/release/oxide-computer-use.exe" -DestinationPath $asset
+          $hash = (Get-FileHash $asset -Algorithm SHA256).Hash.ToLower()
+          "$hash  $asset" | Set-Content "$asset.sha256" -Encoding ascii
+      - uses: actions/upload-artifact@v4
+        with:
+          name: asset-windows-x64
+          path: |
+            oxide-computer-use-windows-x64.zip
+            oxide-computer-use-windows-x64.zip.sha256
           if-no-files-found: error
 
   attach:
     name: attach the release assets
-    needs: build
+    needs: [build, windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -105,10 +136,11 @@ jobs:
             # One key per platform: the token `install.sh` asks for, and the
             # name of the archive it carries for it.
             for platform in macos-arm64 macos-x64; do
-              printf '%s: oxide-reins-%s.tar.gz\n' "${platform}" "${platform}"
+              printf '%s: oxide-computer-use-%s.tar.gz\n' "${platform}" "${platform}"
             done
-          } > assets/oxide-reins-manifest
-          cat assets/oxide-reins-manifest
+            printf 'windows-x64: oxide-computer-use-windows-x64.zip\n'
+          } > assets/oxide-computer-use-manifest
+          cat assets/oxide-computer-use-manifest
       # The drafter's draft is the release. Publishing it creates the tag this
       # workflow runs on, so by now the release exists; a tag pushed by hand has
       # no draft behind it, and creating one here would ship notes nobody

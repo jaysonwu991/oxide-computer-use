@@ -15,7 +15,7 @@ linked reports, not a fresh verification of every third-party release.
 
 | | oxide-computer-use | open-computer-use | Codex Computer Use |
 | --- | --- | --- | --- |
-| Platforms | macOS only; other builds return an explicit error | macOS, Linux, Windows | macOS and Windows; background operation differs by OS |
+| Platforms | macOS and Windows; Linux builds return an explicit error | macOS, Linux, Windows | macOS and Windows; background operation differs by OS |
 | Distribution | macOS arm64/x64 archives or source build; optional development helper built in the Oxide repo | npm package, app bundle, onboarding app | part of Codex |
 | MCP client setup | `install --client oxide\|claude\|codex\|cursor\|desktop`, or `--print` | documented config snippets, `install-codex-mcp` | built in; this server registers beside it as `oxide-computer-use` |
 | Tool surface | 14 tools: the 11 macOS window operations plus `permissions`, `query` and `screenshot` | 9–10, `select_text` on macOS | product-defined |
@@ -61,8 +61,8 @@ linked reports, not a fresh verification of every third-party release.
 
 ## When the other project is the better choice
 
-- **You need Linux or Windows.** This repository only implements macOS; the
-  other platforms compile to a stub whose tools return "not implemented here".
+- **You need Linux.** Windows now has a UI Automation backend; Linux still
+  compiles to a stub whose tools return "not implemented here".
   `open-computer-use` has real runtimes there, with the issues that follow from
   that ([#89](https://github.com/iFurySt/open-computer-use/issues/89),
   [#91](https://github.com/iFurySt/open-computer-use/issues/91),
@@ -87,5 +87,5 @@ linked reports, not a fresh verification of every third-party release.
 - For Codex's integrated app approvals, macOS background workflow, browser and
   lock behavior: use the built-in product; these are not provided by this server
   or by wrapping it in an app bundle.
-- A team automating mixed OS desktops: `open-computer-use` today, until this
-  project grows Linux and Windows backends.
+- A team automating macOS and Windows: this project has native backends for
+  both; Linux remains the reason to choose `open-computer-use`.

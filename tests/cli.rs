@@ -122,9 +122,9 @@ fn install_prints_a_stdio_entry_for_each_client_shape() {
     let value: Value = serde_json::from_str(&stdout).expect("print emits JSON");
     let entry = &value["mcpServers"]["oxide-computer-use"];
     assert_eq!(entry["args"], json!(["mcp"]));
-    assert!(entry["command"]
-        .as_str()
-        .is_some_and(|command| command.ends_with("oxide-computer-use")));
+    assert!(entry["command"].as_str().is_some_and(|command| command
+        .trim_end_matches(".exe")
+        .ends_with("oxide-computer-use")));
 
     let (stdout, _, ok) = run(&["install", "--client", "codex", "--print"]);
     assert!(ok);
@@ -420,6 +420,7 @@ fn doctor_reports_the_build_it_runs_and_the_installer_marker() {
     assert!(build["path"]
         .as_str()
         .unwrap_or_default()
+        .trim_end_matches(".exe")
         .ends_with("oxide-computer-use"));
     assert!(build["target"].as_str().unwrap_or_default().contains('-'));
     assert!(matches!(
@@ -541,7 +542,8 @@ fn verify_reports_every_native_path_and_exits_on_a_missing_one() {
         .iter()
         .filter_map(|check| check["name"].as_str())
         .collect();
-    for expected in [
+    #[cfg(target_os = "macos")]
+    let expected = [
         "accessibility",
         "screen recording",
         "window server",
@@ -551,7 +553,17 @@ fn verify_reports_every_native_path_and_exits_on_a_missing_one() {
         "takeover tap",
         "background input",
         "app policy",
-    ] {
+    ];
+    #[cfg(target_os = "windows")]
+    let expected = [
+        "accessibility",
+        "screen recording",
+        "UI Automation tree",
+        "screenshot",
+        "foreground input",
+        "app policy",
+    ];
+    for expected in expected {
         assert!(
             names.contains(&expected),
             "{expected} is missing: {names:?}"
@@ -619,9 +631,15 @@ fn a_key_spelling_is_checked_before_a_permission_is_asked_for() {
         !stdout.contains("unknown key"),
         "a literal backslash-n is a key, not a spelling mistake: {stdout}"
     );
+    #[cfg(target_os = "macos")]
     assert!(
         stdout.contains("Pressed `Return`") || stdout.contains("Accessibility"),
         "the escape has to reach the key path: {stdout}"
+    );
+    #[cfg(target_os = "windows")]
+    assert!(
+        stdout.contains("`app` is required") || stdout.contains("no Windows app matches"),
+        "the escape has to reach the Windows key path: {stdout}"
     );
 }
 
@@ -727,5 +745,11 @@ fn permissions_can_be_checked_in_the_calling_process_without_prompting() {
         serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap();
     assert!(status["accessibility"].is_boolean());
     assert!(status["screen_recording"].is_boolean());
+    #[cfg(target_os = "macos")]
     assert!(status["guidance"].as_str().unwrap().contains("hosting app"));
+    #[cfg(target_os = "windows")]
+    assert!(status["guidance"]
+        .as_str()
+        .unwrap()
+        .contains("active desktop session"));
 }

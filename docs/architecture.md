@@ -200,7 +200,7 @@ elements, or an `AXValue` decoded as `CGPoint`, `CGSize` or `CFRange`. A miss is
 `get_app_state`, `query`, `click`, `perform_action`, `set_value`, `select_text`,
 `type_text`, `press_key`, `scroll`, `drag`, `paste`, `screenshot` and `guard`,
 plus a shared `State { text, image }`. A backend that cannot implement a tool
-must return an error; the non-macOS stub does exactly that, so a Windows or Linux
+must return an error; the non-macOS/non-Windows stub does exactly that, so a Linux
 build fails loudly instead of pretending.
 
 ## What this design deliberately does not do

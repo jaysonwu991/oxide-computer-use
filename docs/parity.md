@@ -162,7 +162,7 @@ and which need a grant, a second machine or a client:
 | Visual UI QA of any reply | Not done. |
 | Helper-crash recovery and user takeover in the helper | User takeover is implemented here (§1). Recovery is split between the two sides: a tool call that panics is answered as an `isError` result and the loop keeps serving (unit-tested), and a read from an app that stops answering fails after the messaging timeout rather than rendering an empty window. A server process that is *killed* is still the client's to restart — nothing in this repository supervises it. |
 | Other CPU, macOS and display configurations | Only the Apple Silicon build on the development machine was run; CI compiles both architectures. |
-| Windows runtime | Absent by design: another platform builds the same tool list over a stub that returns an explicit "not implemented here" error. |
+| Windows runtime | Implemented over UI Automation, foreground SendInput and GDI capture; cross-compiles for `x86_64-pc-windows-msvc`. |
 
 The commands that close each gap are in
 [development](development.md#manual-smoke-checklist).
@@ -223,10 +223,9 @@ matched operation for operation:
 - Selected common apps receive independently authored, once-per-session
   app-specific guidance; proprietary Codex instruction text is not copied.
 
-The transport is still MCP rather than Codex's private JavaScript facade, and the
-Windows runtime, locked-use flow, settings UI and optional audio recording remain
-outside a macOS stdio server. Those are platform/product boundaries rather than
-missing macOS window operations.
+The transport is still MCP rather than Codex's private JavaScript facade. The
+Windows runtime is a separate foreground backend; locked-use flow, settings UI
+and optional audio recording remain outside the stdio server.
 
 ## What this work does not change
 
