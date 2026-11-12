@@ -1222,6 +1222,9 @@ impl Runtime {
 
 fn windows_keys(spec: &str) -> Result<String> {
     let spec = spec.trim();
+    if spec == "\\n" {
+        return Ok("{enter}".to_string());
+    }
     let (modifiers, key) = spec.rsplit_once('+').unwrap_or(("", spec));
     let mut output = String::new();
     for modifier in modifiers.split('+').filter(|part| !part.trim().is_empty()) {
@@ -1268,6 +1271,7 @@ mod tests {
         assert_eq!(windows_keys("super+c").unwrap(), "{Win}c");
         assert_eq!(windows_keys("Control_L+a").unwrap(), "{Ctrl}a");
         assert_eq!(windows_keys("Return").unwrap(), "{enter}");
+        assert_eq!(windows_keys("\\n").unwrap(), "{enter}");
     }
 
     #[test]
