@@ -200,7 +200,7 @@ matched operation for operation:
 
 - `list_apps` discovers installed applications as well as running bundles and
   returns `id`, `displayName`, `isRunning` and path. `app` accepts a bundle id,
-  display/process name, application path or pid.
+  display/process name, application path, pid or client-style `@App` mention.
 - `get_app_state` launches a discoverable app when necessary, waits for its
   window, returns an accessibility diff after the first view unless `disableDiff`
   is set, and attaches the app-window screenshot by default.
@@ -208,7 +208,8 @@ matched operation for operation:
   click count, held modifier chords and hold duration. Coordinates account for
   the window origin, Retina scale and PNG dimensions.
 - `press_key` reads xdotool-style chords including `Super+c`, `Control_L+a` and
-  `KP_0`, and accepts a hold duration.
+  `KP_0`, plus modifier, navigation, keypad and punctuation keysyms, and accepts
+  a hold duration.
 - `scroll` accepts all four directions and page distance; `drag` uses two
   app-window coordinates with paced HID events.
 - `select_text` supports prefix/suffix disambiguation and `cursor_before` /
@@ -217,6 +218,10 @@ matched operation for operation:
 - `type_text`, `set_value` and `perform_secondary_action` retain their existing
   verified-write and action support, including background keyboard delivery as
   an oxide-computer-use extension.
+- Observations settle after actions: `get_app_state` waits roughly one second,
+  then follows busy/progress indicators for at most five seconds.
+- Selected common apps receive independently authored, once-per-session
+  app-specific guidance; proprietary Codex instruction text is not copied.
 
 The transport is still MCP rather than Codex's private JavaScript facade, and the
 Windows runtime, locked-use flow, settings UI and optional audio recording remain

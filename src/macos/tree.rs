@@ -102,6 +102,9 @@ fn describe(element: &Element, limits: &Limits, center: Option<CGPoint>) -> Stri
     if element.bool_attribute("AXEnabled") == Some(false) {
         parts.push("· disabled".to_string());
     }
+    if element.bool_attribute("AXBusy") == Some(true) {
+        parts.push("· busy".to_string());
+    }
     if limits.include_frames {
         if let Some(center) = center {
             parts.push(format!("@({:.0},{:.0})", center.x, center.y));

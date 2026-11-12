@@ -137,14 +137,14 @@ refuses an app nobody has decided about. See
 | --- | --- |
 | `permissions` | Check permissions in the MCP host and identify the launching app; no prompts. |
 | `list_apps` | Launchable apps as JSON, addressed by bundle id, name or path; `isRunning` and the policy marker show the current state. |
-| `get_app_state` | Launches the app if needed, then returns indexed accessibility state, a window screenshot by default, and a diff unless `disableDiff` is true. |
+| `get_app_state` | Launches the app if needed, waits briefly after actions, then returns indexed accessibility state, optional first-use app guidance, a window screenshot by default, and a diff unless `disableDiff` is true. |
 | `query` | Search that tree by text and/or role without printing all of it. Also refreshes the indexes. |
 | `click` | `AXPress` for a plain left click when available; otherwise a pointer click with middle/right buttons, click count, held modifier, duration, or app-window `x`/`y`. |
 | `perform_secondary_action` | A named AX action such as `AXShowMenu`; an action the element does not support is refused with the list it does support. |
 | `set_value` | Writes `AXValue` only when the element reports it settable, then reads it back. |
 | `select_text` | Selects text with prefix/suffix disambiguation, or places the cursor before/after it, using UTF-16 Cocoa ranges. |
 | `type_text` | Types into the focused control, a newline as `Return`; activates the app first, or `background: true` to one process. |
-| `press_key` | An xdotool-style key or chord such as `Super+c` or `Control_L+a`, with optional hold duration and background delivery. |
+| `press_key` | A broader xdotool-style key/chord surface, including modifiers, keypad, navigation and punctuation names, with optional hold duration and background delivery. |
 | `scroll` | Up/down/left/right wheel scrolling by `pages`, at an element or app-window coordinate. |
 | `drag` | Paced HID drag between app-window screenshot coordinates, stopped by a person's input. |
 | `paste` | Pastes text, Markdown or HTML and restores the previous clipboard contents. |
@@ -208,6 +208,7 @@ src/macos/ax.rs    accessibility elements, attributes, actions, ranges
 src/macos/tree.rs  snapshot rendering and window binding
 src/macos/apps.rs  launchable/running apps, bundle ids and windows
 src/macos/input.rs synthetic pointer, keyboard and scroll events
+src/macos/instructions.rs first-use guidance for selected accessibility-heavy apps
 src/macos/takeover.rs a listen-only event tap that yields to a person's input
 src/macos/screen.rs screenshot capture
 src/macos/cf.rs    Core Foundation bridging

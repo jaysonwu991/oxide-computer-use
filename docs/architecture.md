@@ -136,6 +136,20 @@ and the person keeps the keyboard focus. Nothing else about the events changes,
 so an app that ignores posted-to-pid keys ignores them here too — which is why
 the reply names the delivery path and asks for verification.
 
+## Action settling
+
+Every successful mutating call records an action timestamp. The next
+`get_app_state` waits for the remaining part of a one-second settle window, then
+reads the tree. If that tree still contains `AXProgressIndicator`, a busy marker,
+or a loading value, the runtime polls the accessibility tree every 250 ms until
+the state settles or five seconds have elapsed. The wait is bounded and belongs
+to observation, so failed actions do not create delayed reads.
+
+Selected apps also receive a short, independently authored
+`<app_specific_instructions>` block on their first successful read. Guidance is
+tracked per bundle identity in the runtime process and is never copied from
+Codex's proprietary instruction corpus.
+
 ## Window binding
 
 `tree.rs` threads the current `AXWindow` down the walk: when a node's role is

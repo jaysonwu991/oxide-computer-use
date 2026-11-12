@@ -78,7 +78,7 @@ pub fn specs() -> Value {
                 "max_output_chars": { "type": "integer", "description": MAX_OUTPUT }
             }),
             &["app"],
-            "Read one app's GUI state as indexed accessibility lines plus a screenshot of the app window. The default reply is a diff after the first observation; disableDiff returns a full tree. Element indexes from the newest snapshot are what click, set_value, select_text, perform_secondary_action, drag and scroll take, and they are bound to the window they came from. An app that is not running is launched in the background and an unresponsive app fails within a two-second read bound.",
+            "Read one app's GUI state as indexed accessibility lines plus a screenshot of the app window. After an action it settles briefly and follows busy indicators for up to five seconds. The default reply is a diff after the first observation; disableDiff returns a full tree. Selected apps get independently authored first-use guidance. Element indexes are bound to the window they came from, an app is launched if needed, and an unresponsive app fails within a two-second read bound.",
             "get_app_state"
         ),
         readonly(
@@ -168,7 +168,7 @@ pub fn specs() -> Value {
                 "app": { "type": "string", "description": APP }
             }),
             &["app", "key"],
-            "Press a keyboard key or xdotool-style chord in a GUI app, such as Return, Tab, Super+c, Control_L+a or KP_0. Supports a hold duration; background true delivers to that app's process alone. Use it to submit a form, dismiss a dialog or move between fields.",
+            "Press a keyboard key or xdotool-style chord in a GUI app, including modifier, navigation, function, keypad and punctuation keysyms. Supports a hold duration; background true delivers to that app's process alone. Use it to submit a form, dismiss a dialog or move between fields.",
             "press_key",
             false
         ),
