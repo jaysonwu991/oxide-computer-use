@@ -1252,7 +1252,7 @@ fn windows_keys(spec: &str) -> Result<String> {
         key if key.starts_with('f') && key[1..].parse::<u8>().is_ok() => format!("{{{key}}}"),
         key if key.chars().count() == 1 => key.to_string(),
         other => bail!(
-            "unknown Windows key `{other}`; use Return, Tab, Escape, arrows, Page_Up/Page_Down, F1-F20 or a single character"
+            "unknown key `{other}` for Windows; use Return, Tab, Escape, arrows, Page_Up/Page_Down, F1-F20 or a single character"
         ),
     };
     output.push_str(&key);
