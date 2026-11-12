@@ -137,6 +137,7 @@ refuses an app nobody has decided about. See
 | --- | --- |
 | `permissions` | Check permissions in the MCP host and identify the launching app; no prompts. |
 | `list_apps` | Launchable apps as JSON, addressed by bundle id, name or path; `isRunning` and the policy marker show the current state. |
+| `app_policy` | Read or change Always allow, one-call approval, deny/revoke and fallback app access for settings UIs. |
 | `get_app_state` | Launches the app if needed, waits briefly after actions, then returns indexed accessibility state, optional first-use app guidance, a window screenshot by default, and a diff unless `disableDiff` is true. |
 | `query` | Search that tree by text and/or role without printing all of it. Also refreshes the indexes. |
 | `click` | `AXPress` for a plain left click when available; otherwise a pointer click with middle/right buttons, click count, held modifier, duration, or app-window `x`/`y`. |

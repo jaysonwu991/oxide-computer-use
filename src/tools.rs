@@ -65,6 +65,17 @@ pub fn specs() -> Value {
             "List launchable desktop applications as JSON objects with an id, displayName, path, isRunning and policy marker. The id can be a bundle identifier or app path, so an agent can target a native or browser GUI even before it is running.",
             "list_apps"
         ),
+        action(
+            json!({
+                "action": { "type": "string", "enum": ["list", "allow", "grant_once", "deny", "revoke", "set_default", "set_self_automation", "set_terminals", "reset"], "description": "Policy operation. `list` returns the resolved policy and app rows." },
+                "app": { "type": "string", "description": "App bundle id, name, path or @mention for allow, grant_once, deny or revoke." },
+                "mode": { "type": "string", "enum": ["allow", "deny"], "description": "Fallback for set_default, set_self_automation or set_terminals." }
+            }),
+            &["action"],
+            "Read or change GUI app Computer Use access: Always allow, grant-once approval, deny, revoke, default policy, self-automation and terminal policy. Used by Oxide's Computer Use settings UI and available as an MCP control tool.",
+            "app_policy",
+            false
+        ),
         readonly(
             json!({
                 "app": { "type": "string", "description": APP },
@@ -269,6 +280,7 @@ pub fn execute(runtime: &mut Runtime, name: &str, args: &Value) -> Result<Outcom
                 .unwrap_or(false),
         )?,
         "permissions" => serde_json::to_string_pretty(&crate::permissions::status())?,
+        "app_policy" => runtime.app_policy(args)?,
         "query" => runtime.query(args)?,
         "click" => runtime.click(args)?,
         "perform_secondary_action" => runtime.perform_action(args)?,
@@ -321,7 +333,7 @@ mod tests {
     fn every_tool_declares_a_description_a_schema_and_annotations() {
         let tools = specs();
         let tools = tools.as_array().expect("specs is an array");
-        assert_eq!(tools.len(), 14);
+        assert_eq!(tools.len(), 15);
         for tool in tools {
             let name = tool["name"].as_str().expect("a tool has a name");
             assert!(

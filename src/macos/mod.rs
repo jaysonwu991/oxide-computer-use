@@ -699,6 +699,88 @@ impl Runtime {
         Ok(serde_json::to_string_pretty(&entries)?)
     }
 
+    pub fn app_policy(&mut self, args: &Value) -> Result<String> {
+        let action = string_arg(args, "action").unwrap_or_else(|| "list".to_string());
+        let requested_app =
+            || optional_app(args).ok_or_else(|| anyhow!("`app` is required for `{action}`"));
+        let identity_for = |app: &str| {
+            apps::resolve(app)
+                .and_then(|running| apps::identity(running.pid))
+                .or_else(|| apps::resolve_installed(app)?.identity)
+        };
+        match action.as_str() {
+            "list" => {}
+            "allow" => {
+                let app = requested_app()?;
+                let identity = identity_for(&app);
+                self.policy.allow(&app, identity)?;
+            }
+            "grant_once" | "grant-once" => {
+                let app = requested_app()?;
+                let identity = identity_for(&app);
+                self.policy.grant_once(&app, identity)?;
+            }
+            "deny" => self.policy.deny(&requested_app()?)?,
+            "revoke" => self.policy.revoke(&requested_app()?)?,
+            "set_default" | "set-default" => {
+                let mode = string_arg(args, "mode")
+                    .and_then(|mode| policy::Fallback::parse(&mode))
+                    .ok_or_else(|| anyhow!("`mode` must be `allow` or `deny`"))?;
+                self.policy.set_fallback(mode)?;
+            }
+            "set_self_automation" | "set-self-automation" => {
+                let mode = string_arg(args, "mode")
+                    .and_then(|mode| policy::Fallback::parse(&mode))
+                    .ok_or_else(|| anyhow!("`mode` must be `allow` or `deny`"))?;
+                self.policy.set_self_automation(mode)?;
+            }
+            "set_terminals" | "set-terminals" => {
+                let mode = string_arg(args, "mode")
+                    .and_then(|mode| policy::Fallback::parse(&mode))
+                    .ok_or_else(|| anyhow!("`mode` must be `allow` or `deny`"))?;
+                self.policy.set_terminals(mode)?;
+            }
+            "reset" => self.policy.clear()?,
+            other => bail!(
+                "unknown app policy action `{other}`; use list, allow, grant_once, deny, revoke, set_default, set_self_automation, set_terminals or reset"
+            ),
+        }
+        self.policy.reload();
+
+        let apps: Vec<Value> = apps::installed_apps()
+            .into_iter()
+            .map(|app| {
+                let access = self.policy.access(&app.name, app.identity.as_ref());
+                serde_json::json!({
+                    "id": app.id,
+                    "displayName": app.name,
+                    "path": app.path,
+                    "isRunning": app.pid.is_some(),
+                    "policy": access.marker().trim(),
+                })
+            })
+            .collect();
+        Ok(serde_json::to_string_pretty(&serde_json::json!({
+            "default": match self.policy.fallback() {
+                policy::Fallback::Allow => "allow",
+                policy::Fallback::Deny => "deny",
+            },
+            "allowed": self.policy.allowed(),
+            "denied": self.policy.denied(),
+            "identities": self.policy.identities(),
+            "oneTime": self.policy.one_time(),
+            "selfAutomation": match self.policy.self_automation() {
+                policy::Fallback::Allow => "allow",
+                policy::Fallback::Deny => "deny",
+            },
+            "terminals": match self.policy.terminals() {
+                policy::Fallback::Allow => "allow",
+                policy::Fallback::Deny => "deny",
+            },
+            "apps": apps,
+        }))?)
+    }
+
     pub fn get_app_state(&mut self, args: &Value) -> Result<State> {
         let name = required_app(args)?;
         let app = self.resolved(&name)?;
