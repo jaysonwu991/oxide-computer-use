@@ -358,7 +358,7 @@ fn apps(command: AppsCommand) -> Result<()> {
 
 #[cfg(target_os = "macos")]
 fn identity_for(app: &str) -> Option<Identity> {
-    macos::apps::identity_by_name(app)
+    macos::apps::identity_by_name(app).or_else(|| macos::apps::resolve_installed(app)?.identity)
 }
 
 #[cfg(not(target_os = "macos"))]

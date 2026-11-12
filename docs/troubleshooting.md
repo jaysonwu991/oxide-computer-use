@@ -74,7 +74,7 @@ macOS shows a given app's prompt once. If it was dismissed, open System Settings
 
 | Message | Cause | What to do |
 | --- | --- | --- |
-| ``no running app matches `X` `` | Name typo, app has no usable window, or it is a hidden helper | `list_apps`; try the pid; `list_apps {"include_helpers":true}` |
+| ``no app matches `X` `` | Name/bundle/path typo, no launchable app, or it is a hidden helper | `list_apps`; use its `id` or `path`; `list_apps {"include_helpers":true}` |
 | The app is running but not listed | Window smaller than 120×80, layer above 0, minimized, or a window-server agent | `include_helpers`, or target it by pid |
 | ``window N does not exist`` / ``no window title contains …`` | Wrong index or title | Read the header of `get_app_state`: it lists the exact `window` values |
 | Clicks land in the wrong window | The app has several windows and no `window` was given | Pass `window` (index or title substring); indexes are then bound to it |
@@ -173,10 +173,10 @@ call that produced it is what a report needs.
 
 | Symptom | Cause | What to do |
 | --- | --- | --- |
-| Claude Code ignores the server | `computer-use` is a reserved server name there | Register `oxide-reins-local` (`install --client claude` does), or another `--name` |
-| Codex shows two Computer Use tool sets | Codex ships its own Computer Use plugin; this server registers beside it | Expected. The plugin's tools are in Codex's `computer_use` namespace; this server is `oxide-reins-local` and only its calls obey this project's app policy |
-| `install --client codex --name computer-use` is refused | Codex's bundled Computer Use plugin owns that name, as it does `computer_use`, `node_repl`, `cua_repl` and `codex_apps` | Use the default `oxide-reins-local`, or another name Codex does not already use |
-| `install --client codex` warns that `mcp_servers.computer-use` is already there | An entry from an older install sits under the name Codex's plugin owns | Keep `oxide-reins-local` and delete that table: two entries, one of them shadowed, is what the warning is about |
+| Claude Code ignores the server | `computer-use` is a reserved server name there | Register `oxide-reins` (`install --client claude` does), or another `--name` |
+| Codex shows two Computer Use tool sets | Codex ships its own Computer Use plugin; this server registers beside it | Expected. The plugin's tools are in Codex's `computer_use` namespace; this server is `oxide-reins` and only its calls obey this project's app policy |
+| `install --client codex --name computer-use` is refused | Codex's bundled Computer Use plugin owns that name, as it does `computer_use`, `node_repl`, `cua_repl` and `codex_apps` | Use the default `oxide-reins`, or another name Codex does not already use |
+| `install --client codex` warns that `mcp_servers.computer-use` is already there | An entry from an older install sits under the name Codex's plugin owns | Keep `oxide-reins` and delete that table: two entries, one of them shadowed, is what the warning is about |
 | A client cannot parse the config after an edit | The file was invalid before `install` ran; it refuses to rewrite it | Fix the JSON/TOML, rerun `install` |
 | The client never starts the server | Wrong absolute path, or the binary is not executable | `install --print` to see the exact command, then run it by hand |
 | Tools appear but calls fail with "Connection closed" | The server exited: bad launch command, or a panic | Run the same command in a terminal and send one request; a clean server prints JSON and nothing else |
@@ -187,7 +187,8 @@ call that produced it is what a report needs.
 - Large tree: `query` first, or lower `max_tree_nodes`; the reply states when it
   truncated.
 - Long text values: leave `text_limit` at 200, raise it for one field only.
-- Huge replies: `max_output_chars` caps them; screenshots are opt-in.
+- Huge replies: state diffs and `max_output_chars` cap them; set
+  `include_screenshot: false` for a text-only observation.
 - Many steps: prefer `--calls` in the CLI, or one `get_app_state` followed by
   several actions in a session, over re-reading the tree each time.
 - A single slow call: accessibility calls are synchronous and blocking; an app
@@ -218,9 +219,9 @@ recipient. Never automate a grant or read the private TCC database to diagnose i
 The setup order, the two approval gates and the controls Oxide owns are in the
 README's [Use it with Oxide Desktop](../README.md#use-it-with-oxide-desktop).
 
-With an Oxide build that supports tool image events, call `screenshot` or
-`get_app_state` with `include_screenshot: true`. The tool card shows a clickable
-thumbnail that opens the captured image. Newer Desktop builds also retain the
+With an Oxide build that supports tool image events, `get_app_state` already
+includes the app-window screenshot; `screenshot` requests one explicitly. The
+tool card shows a clickable thumbnail that opens the captured image. Newer Desktop builds also retain the
 last snapshot in the details dock and expose a mouse activity control/dialog,
 including when the dock has no room. A later tree-only result keeps the previous
 image and its original app label. A connected MCP server alone does not mean a

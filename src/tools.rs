@@ -12,7 +12,7 @@ pub struct Outcome {
     pub images: Vec<Vec<u8>>,
 }
 
-const APP: &str = "Running app name (or pid) exactly as `list_apps` reports it";
+const APP: &str = "App bundle id, display/process name, application path, or pid from `list_apps`";
 const WINDOW: &str =
     "Bind to one window: a zero-based index or a title substring, as listed by get_app_state";
 const MAX_OUTPUT: &str = "Cap on the reply text in characters (default 20000)";
@@ -62,22 +62,23 @@ pub fn specs() -> Value {
                 "include_helpers": { "type": "boolean", "description": "Also show window-server helpers such as a native file picker that is not part of its app." }
             }),
             &[],
-            "List the running desktop apps that own windows, with their pid, window titles and the app policy marker on each. Use it to find the app to drive, native or browser, and to see which app still needs approval.",
+            "List launchable desktop applications as JSON objects with an id, displayName, path, isRunning and policy marker. The id can be a bundle identifier or app path, so an agent can target a native or browser GUI even before it is running.",
             "list_apps"
         ),
         readonly(
             json!({
                 "app": { "type": "string", "description": APP },
                 "window": { "type": "string", "description": WINDOW },
+                "disableDiff": { "type": "boolean", "description": "Return the full accessibility tree instead of a diff from the previous state of the same app window." },
                 "text_limit": { "description": "Characters shown per text value; a number, or \"max\" for full values." },
                 "max_tree_nodes": { "type": "integer", "description": "Node budget before the tree is reported truncated (default 1200)." },
                 "max_tree_depth": { "type": "integer", "description": "Depth limit before the tree is reported truncated (default 64)." },
                 "include_frames": { "type": "boolean", "description": "Append each element's on-screen center, for coordinate actions." },
-                "include_screenshot": { "type": "boolean", "description": "Attach one PNG of the same window, for when the tree is not enough." },
+                "include_screenshot": { "type": "boolean", "description": "Attach one PNG of the same app window. Default true, matching Codex Computer Use; set false for a text-only observation." },
                 "max_output_chars": { "type": "integer", "description": MAX_OUTPUT }
             }),
             &["app"],
-            "Read one app's accessibility tree as indexed lines. Element indexes from the newest snapshot are what click, set_value, select_text, perform_secondary_action, drag and scroll take, and they are bound to the window they came from. This is the GUI element listing behind every later click or type. An app that stops answering fails the read within a two-second bound instead of returning an empty tree, and the previous snapshot stays addressable.",
+            "Read one app's GUI state as indexed accessibility lines plus a screenshot of the app window. The default reply is a diff after the first observation; disableDiff returns a full tree. Element indexes from the newest snapshot are what click, set_value, select_text, perform_secondary_action, drag and scroll take, and they are bound to the window they came from. An app that is not running is launched in the background and an unresponsive app fails within a two-second read bound.",
             "get_app_state"
         ),
         readonly(
@@ -100,10 +101,13 @@ pub fn specs() -> Value {
                 "element_index": { "type": "integer", "description": "Index from the newest get_app_state or query." },
                 "x": { "type": "number" },
                 "y": { "type": "number" },
-                "button": { "type": "string", "enum": ["left", "right"], "description": "Default left." }
+                "mouse_button": { "type": "string", "enum": ["left", "right", "middle", "l", "r", "m"], "description": "Default left." },
+                "click_count": { "type": "integer", "description": "Number of clicks to perform (default 1)." },
+                "key": { "type": "string", "description": "Modifier key or chord held during the click, such as Shift or Super+Shift." },
+                "duration": { "type": "number", "description": "Seconds to hold the mouse button before releasing it." }
             }),
             &["app"],
-            "Click a GUI element: a button, link, menu item, checkbox or tab. Left-click uses AXPress when available; right-click and other clicks use pointer events at the element center (or x/y). The reply says which path ran.",
+            "Click a GUI element or app-window coordinate: a button, link, menu item, checkbox or tab. Left single-click uses AXPress when available; repeated, middle, right, modified or held clicks use pointer events at the element center or x/y relative to the app screenshot. The reply says which path ran.",
             "click",
             false
         ),
@@ -113,7 +117,7 @@ pub fn specs() -> Value {
                 "element_index": { "type": "integer" },
                 "action": { "type": "string", "description": "Default AXPress; an unsupported action is refused with the list of actions the element does support." }
             }),
-            &["app", "element_index"],
+            &["app", "element_index", "action"],
             "Perform a named accessibility action on a GUI element, such as AXShowMenu, AXIncrement or AXConfirm. Use it for a context menu or a stepper that has no clickable target.",
             "perform_secondary_action",
             false
@@ -132,11 +136,14 @@ pub fn specs() -> Value {
         action(
             json!({
                 "app": { "type": "string", "description": APP },
-                "element_index": { "type": "integer", "description": "Defaults to the app's focused text element." },
-                "text": { "type": "string", "description": "The text to select inside the element." }
+                "element_index": { "type": "integer", "description": "Element index from the newest app state." },
+                "text": { "type": "string", "description": "The text to select inside the element." },
+                "prefix": { "type": "string", "description": "Optional text immediately before the target, to disambiguate repeated matches." },
+                "suffix": { "type": "string", "description": "Optional text immediately after the target, to disambiguate repeated matches." },
+                "selection_type": { "type": "string", "enum": ["text", "cursor_before", "cursor_after"], "description": "Select the text itself, or place a zero-width cursor before/after it. Default text." }
             }),
-            &["app", "text"],
-            "Select a piece of text inside a text element, for reading or for a following action such as copy. Use it in a document or a text field before pressing a keyboard shortcut.",
+            &["app", "element_index", "text"],
+            "Select text inside an indexed GUI text element, with optional prefix/suffix disambiguation, or place the cursor before or after it. Use it in a document or text field before pressing a keyboard shortcut.",
             "select_text",
             true
         ),
@@ -147,34 +154,35 @@ pub fn specs() -> Value {
                 "element_index": { "type": "integer" },
                 "background": { "type": "boolean", "description": "Deliver the keys to this app's process without activating it or touching the real keyboard focus. Off by default: the desktop changes hands only when asked." }
             }),
-            &["text"],
-            "Type text through the keyboard into an app: the focused control, after activating the app, or with background true, that app's process alone. A newline inside the text is pressed as Return. Use it for a search box, form field or terminal.",
+            &["app", "text"],
+            "Type text through the keyboard into a GUI app window after activating it. A newline inside the text is pressed as Return. The background extension addresses that app's process alone without activating it.",
             "type_text",
             false
         ),
         action(
             json!({
                 "key": { "type": "string" },
-                "modifiers": { "type": "string", "description": "For example \"cmd+shift\"." },
+                "modifiers": { "type": "string", "description": "Legacy separate modifier list; key may also carry a chord." },
+                "duration": { "type": "number", "description": "Seconds to hold the key before releasing it." },
                 "background": { "type": "boolean", "description": "Deliver the key to this app's process without activating it. Off by default." },
                 "app": { "type": "string", "description": APP }
             }),
-            &["key"],
-            "Press one keyboard key, optionally with modifiers, in a GUI app, on the real desktop or with background true to that app's process alone. Key names: Return, Tab, Escape, Space, Delete, Forward_Delete, Home, End, Page_Up, Page_Down, Left, Right, Up, Down, F1-F12 or a single character; the spellings \"\\n\", \"\\t\" and \"\\r\" mean Return and Tab. Modifiers: cmd, shift, alt, ctrl. Use it to submit a form, dismiss a dialog or move between fields.",
+            &["app", "key"],
+            "Press a keyboard key or xdotool-style chord in a GUI app, such as Return, Tab, Super+c, Control_L+a or KP_0. Supports a hold duration; background true delivers to that app's process alone. Use it to submit a form, dismiss a dialog or move between fields.",
             "press_key",
             false
         ),
         action(
             json!({
                 "app": { "type": "string", "description": APP },
-                "direction": { "type": "string", "enum": ["up", "down"], "description": "Default down." },
-                "lines": { "type": "integer", "description": "Default 3." },
+                "direction": { "type": "string", "enum": ["up", "down", "left", "right", "u", "d", "l", "r"], "description": "Direction to scroll." },
+                "pages": { "type": "number", "description": "Number of pages to scroll (default 1)." },
                 "element_index": { "type": "integer" },
                 "x": { "type": "number" },
                 "y": { "type": "number" }
             }),
-            &[],
-            "Scroll a page, list or window with the mouse wheel: the app's frontmost window, or the pointer position when x/y or element_index is given. No snapshot is required.",
+            &["app", "direction"],
+            "Scroll a GUI page, list or window up, down, left or right at an indexed element or app-window coordinate. pages controls distance; coordinates are relative to the app-window screenshot.",
             "scroll",
             false
         ),
@@ -187,9 +195,20 @@ pub fn specs() -> Value {
                 "to_x": { "type": "number" },
                 "to_y": { "type": "number" }
             }),
-            &["to_x", "to_y"],
-            "Drag with the left mouse button from an element center or from_x/from_y to to_x/to_y: a window, a slider or a text selection. Paced pointer events, so it moves windows and selects text rather than posting one lost event. A person's input stops it.",
+            &["app", "from_x", "from_y", "to_x", "to_y"],
+            "Drag with the left mouse button between app-window screenshot coordinates: a window, slider or text selection. Paced pointer events move windows and select text reliably, and a person's input stops the drag.",
             "drag",
+            false
+        ),
+        action(
+            json!({
+                "app": { "type": "string", "description": APP },
+                "text": { "type": "string" },
+                "format": { "type": "string", "enum": ["text", "md", "html"], "description": "Clipboard content format." }
+            }),
+            &["app", "text", "format"],
+            "Paste plain text, Markdown or HTML into the focused GUI control, then restore the person's previous clipboard contents. Prefer this for multiline or formatted content.",
+            "paste",
             false
         ),
         readonly(
@@ -259,6 +278,7 @@ pub fn execute(runtime: &mut Runtime, name: &str, args: &Value) -> Result<Outcom
         "press_key" => runtime.press_key(args)?,
         "scroll" => runtime.scroll(args)?,
         "drag" => runtime.drag(args)?,
+        "paste" => runtime.paste(args)?,
         other => bail!("unknown tool `{other}`; call tools/list for the available tools"),
     };
     Ok(Outcome {
@@ -301,7 +321,7 @@ mod tests {
     fn every_tool_declares_a_description_a_schema_and_annotations() {
         let tools = specs();
         let tools = tools.as_array().expect("specs is an array");
-        assert_eq!(tools.len(), 13);
+        assert_eq!(tools.len(), 14);
         for tool in tools {
             let name = tool["name"].as_str().expect("a tool has a name");
             assert!(
@@ -383,6 +403,32 @@ mod tests {
         names.sort();
         names.dedup();
         assert_eq!(names.len(), specs().as_array().map(Vec::len).unwrap_or(0));
+    }
+
+    #[test]
+    fn the_macos_window_api_parameters_are_exposed() {
+        let tools = specs();
+        let tool = |name: &str| {
+            tools
+                .as_array()
+                .expect("specs is an array")
+                .iter()
+                .find(|tool| tool["name"].as_str() == Some(name))
+                .unwrap_or_else(|| panic!("{name} is missing"))
+        };
+        assert!(tool("get_app_state")["inputSchema"]["properties"]["disableDiff"].is_object());
+        for property in ["mouse_button", "click_count", "key", "duration"] {
+            assert!(
+                tool("click")["inputSchema"]["properties"][property].is_object(),
+                "click is missing {property}"
+            );
+        }
+        assert_eq!(
+            tool("paste")["inputSchema"]["required"],
+            json!(["app", "text", "format"])
+        );
+        assert!(tool("select_text")["inputSchema"]["properties"]["selection_type"].is_object());
+        assert!(tool("scroll")["inputSchema"]["properties"]["pages"].is_object());
     }
 
     #[test]

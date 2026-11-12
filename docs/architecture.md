@@ -112,8 +112,8 @@ therefore:
   event suppression interval;
 - moves the pointer, waits 35 ms, presses, waits 35 ms, then posts sixteen drag
   steps 12 ms apart with per-step deltas, waits again, and releases;
-- sets the click state on the press, so a double-click consumer sees a real
-  click rather than a bare down/up pair.
+- sets a monotonically increasing click state on repeated down/up pairs, so a
+  double/triple-click consumer sees a real sequence rather than bare clicks.
 
 Keyboard input uses key codes for named keys and a UTF-16 string per line for
 `type_text`, which reaches the app's key handling instead of the pasteboard; a
@@ -184,9 +184,9 @@ elements, or an `AXValue` decoded as `CGPoint`, `CGSize` or `CFRange`. A miss is
 
 `src/runtime.rs` defines the shape a backend must provide: `list_apps`,
 `get_app_state`, `query`, `click`, `perform_action`, `set_value`, `select_text`,
-`type_text`, `press_key`, `scroll`, `drag`, `screenshot` and `guard`, plus a
-shared `State { text, image }`. A backend that cannot implement a tool must
-return an error; the non-macOS stub does exactly that, so a Windows or Linux
+`type_text`, `press_key`, `scroll`, `drag`, `paste`, `screenshot` and `guard`,
+plus a shared `State { text, image }`. A backend that cannot implement a tool
+must return an error; the non-macOS stub does exactly that, so a Windows or Linux
 build fails loudly instead of pretending.
 
 ## What this design deliberately does not do

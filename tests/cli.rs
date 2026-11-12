@@ -55,7 +55,7 @@ fn tools_lists_every_registered_tool() {
     let (stdout, _, ok) = run(&["tools"]);
     assert!(ok);
     let names: Vec<&str> = stdout.lines().collect();
-    assert_eq!(names.len(), 13, "unexpected tool list: {stdout}");
+    assert_eq!(names.len(), 14, "unexpected tool list: {stdout}");
     assert!(names.contains(&"list_apps"));
     assert!(names.contains(&"get_app_state"));
     assert!(names.contains(&"set_value"));
@@ -112,7 +112,7 @@ fn the_mcp_server_answers_initialize_and_tools_list() {
     assert_eq!(responses[1]["id"], json!(2));
     assert!(responses[1]["result"]["tools"]
         .as_array()
-        .is_some_and(|tools| tools.len() == 13));
+        .is_some_and(|tools| tools.len() == 14));
 }
 
 #[test]
@@ -399,7 +399,7 @@ fn tools_json_prints_the_surface_an_agent_searches() {
     assert!(ok, "{stderr}");
     let specs: Value = serde_json::from_str(&stdout).unwrap();
     let specs = specs.as_array().expect("tools --json prints an array");
-    assert_eq!(specs.len(), 13);
+    assert_eq!(specs.len(), 14);
     for tool in specs {
         assert!(tool["name"].as_str().is_some_and(|name| !name.is_empty()));
         let description = tool["description"].as_str().unwrap_or_default();
@@ -428,7 +428,7 @@ fn a_subscribed_client_hears_that_the_screen_may_have_changed() {
         json!({"jsonrpc": "2.0", "id": 2, "method": "resources/list"}),
         json!({"jsonrpc": "2.0", "id": 3, "method": "resources/subscribe", "params": {"uri": "computer-use://screen"}}),
         json!({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "permissions", "arguments": {}}}),
-        json!({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "click", "arguments": {"app": "TextEdit"}}}),
+        json!({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "click", "arguments": {"app": "__missing_computer_use_app__"}}}),
     ] {
         writeln!(stdin, "{request}").unwrap();
     }

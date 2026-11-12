@@ -55,8 +55,10 @@ overlay.*
   cannot start a conversation, and a timer that emits captures nobody asked for
   would be a stream the client never reads. The cadence of a "live" preview is
   the client's choice — read as often as the pane is visible.
-- Tool-returned snapshots are unchanged: `screenshot` and `include_screenshot`
-  still put a PNG in the reply, which is what a transcript keeps.
+- Tool-returned observations now match the current macOS window API shape:
+  `get_app_state` attaches one app-window screenshot by default (and returns a
+  diff after the first view), while the standalone `screenshot` tool remains
+  available for an explicit full-screen or app-window capture.
 
 ## 3. Approvals and settings
 
@@ -190,10 +192,42 @@ attempts.*
   integrations is not established. Nothing in this repository can reproduce it,
   and a fix that assumes a cause would be a guess.
 
+## 8. Current macOS window API
+
+The original seven follow-ups did not cover the tool-level API that Codex's
+installed Computer Use runtime now exposes. The macOS window surface is now
+matched operation for operation:
+
+- `list_apps` discovers installed applications as well as running bundles and
+  returns `id`, `displayName`, `isRunning` and path. `app` accepts a bundle id,
+  display/process name, application path or pid.
+- `get_app_state` launches a discoverable app when necessary, waits for its
+  window, returns an accessibility diff after the first view unless `disableDiff`
+  is set, and attaches the app-window screenshot by default.
+- `click` supports element or app-window coordinates, left/right/middle buttons,
+  click count, held modifier chords and hold duration. Coordinates account for
+  the window origin, Retina scale and PNG dimensions.
+- `press_key` reads xdotool-style chords including `Super+c`, `Control_L+a` and
+  `KP_0`, and accepts a hold duration.
+- `scroll` accepts all four directions and page distance; `drag` uses two
+  app-window coordinates with paced HID events.
+- `select_text` supports prefix/suffix disambiguation and `cursor_before` /
+  `cursor_after`; `paste` supports text, Markdown and HTML and restores every
+  previous clipboard data type.
+- `type_text`, `set_value` and `perform_secondary_action` retain their existing
+  verified-write and action support, including background keyboard delivery as
+  an oxide-reins extension.
+
+The transport is still MCP rather than Codex's private JavaScript facade, and the
+Windows runtime, locked-use flow, settings UI and optional audio recording remain
+outside a macOS stdio server. Those are platform/product boundaries rather than
+missing macOS window operations.
+
 ## What this work does not change
 
-- Tool names, parameters and the MCP revision negotiation are unchanged; a
-  client that worked before works the same way.
+- The MCP revision negotiation is unchanged. Existing tool names are preserved;
+  the current Computer Use parameter names were added and `paste` joined the
+  surface.
 - The existing allow/deny file keeps working: an allow list with entries still
   refuses everything it does not name, which is now spelled `app_policy: "deny"`.
 - Nothing here approves a macOS permission, sends input at startup, or prompts

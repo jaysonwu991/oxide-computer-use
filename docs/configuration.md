@@ -71,22 +71,21 @@ Semantics:
   is refused. `app_policy` makes that choice explicit: `"allow"` or `"deny"` for
   an app with no decision of its own.
 - **An approval can be pinned to a bundle identity.** `apps allow` records the
-  bundle identifier and bundle path of the running app, and every later call
-  reads the identity of the process it resolved. A different app answering to the
-  same name is refused, naming both identities. A name-only approval (granted
-  while the app was not running) still matches on the name; re-running
-  `apps allow` while the app runs pins it.
+  bundle identifier and path of the running or installed app, and every later
+  call reads the identity of the process it resolved. A different app answering
+  to the same name is refused, naming both identities. If no bundle can be
+  identified, the approval falls back to its name.
 - **One approval can be spent on one call.** `apps grant-once` writes
   `one_time_grant`, which is consumed by the next call that uses it and removed
   from the file. It is refused, and kept, when the running app's identity differs
   from the one recorded.
-- Matching is case-insensitive and exact on the app name as macOS reports it —
-  the same string `list_apps` prints. `apps deny 1password` blocks `1Password`.
+- Matching is case-insensitive against the display name, bundle identifier or
+  bundle path. `apps deny 1password`, `apps deny com.example.App`, and a path
+  rule all reach the same app.
 - The check happens after `app` is resolved and before any accessibility call, so
   a denial reads as a policy decision, not as a permissions problem.
-- `list_apps` still shows a blocked app, marked `[blocked by app policy]`, and a
-  one-call approval as `[approved for one call]`, so an agent can tell "refused"
-  from "not running".
+- `list_apps` still shows a blocked app in its JSON `policy` field, so an agent
+  can tell "refused" from "not running".
 - **The file is re-read on every call.** An approval, a revocation or a one-time
   grant written by `apps allow`/`revoke`/`grant-once` in one terminal reaches an
   `oxide-reins mcp` server that is already running; nothing has to be restarted.
@@ -113,7 +112,7 @@ Semantics:
 Commands:
 
 ```sh
-oxide-reins apps list                   # policy, config path and running apps it marks
+oxide-reins apps list                   # policy, config path and launchable apps it marks
 oxide-reins apps allow "Finder"         # approve from now on, pinned to its identity
 oxide-reins apps grant-once "Preview"   # approve exactly one call
 oxide-reins apps deny "1Password"       # always wins
@@ -139,18 +138,21 @@ separate gate.
 | Characters per text value | 200 | `get_app_state.text_limit` (`"max"` = no limit) |
 | Reply text | 20000 characters | `max_output_chars` on `get_app_state` and `query` |
 | `query` matches | 20 | `query.max_results` |
-| Scroll amount | 3 lines | `scroll.lines` |
-| Scroll direction | `down` | `scroll.direction` |
+| Scroll amount | 1 page | `scroll.pages` |
+| Scroll direction | required by the schema | `scroll.direction` |
 | Delay between `--calls` calls | 1 s | `call --sleep` |
-| Screenshot | off | `get_app_state.include_screenshot`, `screenshot` |
+| App-state screenshot | on | `get_app_state.include_screenshot: false` |
+| State text | diff after the first read | `get_app_state.disableDiff` |
 | On-screen frames in the tree | off | `get_app_state.include_frames` |
 
 Exceeding a budget is always reported: the reply says how much was cut and which
 argument raises the limit.
 
-## What a window must look like to be listed
+## What a window must look like to count as running
 
-`list_apps` hides surfaces that are not usable windows:
+Installed `.app` bundles are listed from the standard application directories
+when they have an executable. Running bundles elsewhere are added too. Usable
+windows obey these rules:
 
 - layer 0 only, so menu-bar strips, panels and overlays are not apps;
 - at least 120×80 points, so 1×1 and 10×10 helpers disappear;
@@ -159,9 +161,9 @@ argument raises the limit.
   `SystemUIServer`, `通用控制`, `自动填充`, and any name ending in `Service`.
 
 Windows in another Space are kept, because accessibility still reaches those
-apps. `list_apps {"include_helpers": true}` shows the hidden surfaces — the way to
-find a native file picker that belongs to no app. Resolution of `app` searches
-those helpers too, so a pid works even when the name is not listed.
+apps. `list_apps {"include_helpers": true}` adds running hidden surfaces — the
+way to find a native file picker that belongs to no app. Resolution of `app`
+searches those helpers too, so a pid works even when the name is not listed.
 
 ## Permissions
 

@@ -14,7 +14,7 @@ design; "mitigated" means the failure is possible but reported accurately;
 | [#83](https://github.com/iFurySt/open-computer-use/issues/83) macOS 26 findings | Designed out, except the date-input item. |
 | ↳ wrong-window targeting, no window selector | `get_app_state` takes `window` (index or title substring) and binds every index to its `AXWindow`; acting on an index whose window changed is refused (`checked_element`, `src/macos/mod.rs`). |
 | ↳ `set_value` silently does nothing | Refused when `AXIsAttributeSettable` says no, and the value is read back after writing; a control that ignores the write fails with what it still reads. |
-| ↳ screenshot in every reply | Screenshots are opt-in (`include_screenshot`, `screenshot`), never attached to action replies. |
+| ↳ screenshot in every reply | `get_app_state` attaches one app-window screenshot like Codex Computer Use; action replies stay text-only, and `include_screenshot: false` requests a text-only observation. |
 | ↳ `scroll` needs a snapshot first | `scroll` needs no snapshot: `app` alone scrolls the frontmost window. |
 | ↳ `--calls-file` paths | The error names the resolved absolute path and the path as typed (`src/main.rs`). |
 | ↳ docs/version drift | One tool list feeds `tools`, `tools/list` and the README table; a test pins the count. |
@@ -36,12 +36,12 @@ design; "mitigated" means the failure is possible but reported accurately;
 
 | Issue | Here |
 | --- | --- |
-| [#16](https://github.com/iFurySt/open-computer-use/issues/16) significant context usage | Mitigated: `max_output_chars` (default 20000) truncates with a visible note, screenshots are opt-in, and `query` searches a tree without dumping it. |
+| [#16](https://github.com/iFurySt/open-computer-use/issues/16) significant context usage | Mitigated: state diffs, `max_output_chars` (default 20000) with a visible truncation note, optional text-only state, and `query` without dumping the whole tree. |
 | [#40](https://github.com/iFurySt/open-computer-use/issues/40) 1200-node ceiling hides content | Mitigated: the reply says it truncated and how to raise it; `max_tree_nodes` and `max_tree_depth` are parameters. |
 | [#36](https://github.com/iFurySt/open-computer-use/issues/36) fixed 160-character truncation | Mitigated: `text_limit` per call, `"max"` for full values, and truncated values carry their true length. |
 | [#15](https://github.com/iFurySt/open-computer-use/issues/15) prompt before touching an app | Mitigated: the client's own approval prompt, plus a per-app policy enforced inside the server before any accessibility call. `apps policy deny` makes approval the default, `apps grant-once` approves one call, and an approval is pinned to the bundle identity it was given for. macOS has no OS-level per-app prompt, so this policy is the per-app control. |
 | [#12](https://github.com/iFurySt/open-computer-use/issues/12) configurable allow list | Implemented: `apps allow`, `apps deny`, `apps revoke`, `apps grant-once`, `apps policy`, `apps reset`, `apps list`, stored in `~/.config/oxide-reins/config.json` and re-read on every call; a deny rule wins over an allow list, and an unreadable file refuses every app. |
-| [#39](https://github.com/iFurySt/open-computer-use/issues/39) auditing and visual feedback | Partly. Every action reply names the path it took (AX action versus pointer event), and `include_screenshot` attaches what the agent just read. A client that subscribes to `computer-use://screen` is told after every call that could have changed the screen, so it can show what changed without asking the agent for an image. There is no audit log and no image taken automatically — **open**. |
+| [#39](https://github.com/iFurySt/open-computer-use/issues/39) auditing and visual feedback | Partly. Every action reply names the path it took (AX action versus pointer event), app state includes the current window screenshot, and a client subscribed to `computer-use://screen` is told after calls that could change it. There is no persistent audit log — **open**. |
 | [#11](https://github.com/iFurySt/open-computer-use/issues/11), [#18](https://github.com/iFurySt/open-computer-use/issues/18) macOS permission confusion, CLI `click` errors | Mitigated by messages: `doctor` reports both permissions and the app policy, a missing permission names the Settings pane, and an out-of-range or wrong-app index says which snapshot it belongs to. |
 | [#60](https://github.com/iFurySt/open-computer-use/issues/60), [#14](https://github.com/iFurySt/open-computer-use/issues/14), [#55](https://github.com/iFurySt/open-computer-use/issues/55) platform and product requests | Out of scope for a macOS-only server. |
 

@@ -85,6 +85,10 @@ mod unsupported {
             Self::unsupported()
         }
 
+        pub fn paste(&mut self, _: &Value) -> Result<String> {
+            Self::unsupported()
+        }
+
         pub fn screenshot(&self, _: &Value) -> Result<Vec<u8>> {
             Self::unsupported()
         }

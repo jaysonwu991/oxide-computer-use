@@ -1,8 +1,10 @@
 # oxide-reins
 
 Computer Use as a stdio MCP server for any agent on macOS — Oxide, Claude Code,
-Codex CLI, Cursor, Claude Desktop. It lists the running apps, reads an app's
-accessibility tree, and clicks, types, selects, scrolls and drags inside it.
+Codex CLI, Cursor, Claude Desktop. It lists launchable apps, reads an app's
+accessibility tree, and clicks, types, pastes, selects, scrolls and drags inside
+it. Installed apps are discoverable by bundle id, name or path and launch when
+first addressed.
 
 The name: reins steer without letting go. The agent drives the apps, while the
 [app policy](docs/configuration.md) and the permission grants stay in your hands.
@@ -28,7 +30,7 @@ agent (Oxide / Claude Code / Codex / Cursor) ──stdio JSON-RPC──▶ oxide
 - macOS 14 or later.
 - Accessibility permission for the terminal or app that launches the server
   (System Settings → Privacy & Security → Accessibility).
-- Screen Recording permission for `screenshot` and `include_screenshot`.
+- Screen Recording permission for the app-state screenshot and `screenshot`.
 
 ## Install
 
@@ -104,9 +106,9 @@ Then, in this order:
    Those are the user's decisions, not a step to work around.
 5. **Preview and stop belong to Oxide.** Newer builds show the last image this
    server returned in the details dock, a mouse glyph while a call runs, and
-   **Stop task**. The image comes from `screenshot`, `include_screenshot` or a
-   read of `computer-use://screen` — on request, never on a timer — and stopping a
-   turn does not undo a click or a write that already ran.
+   **Stop task**. The image comes from the default `get_app_state` screenshot,
+   `screenshot`, or a read of `computer-use://screen` — on request, never on a
+   timer — and stopping a turn does not undo a click or a write that already ran.
 6. **A separate app identity is available.** The opt-in
    [native helper](docs/oxide-helper.md) hosts this same runtime with its own
    permission entry and a menu-bar stop; `install --client oxide` registers the
@@ -135,17 +137,18 @@ refuses an app nobody has decided about. See
 | Tool | What it does |
 | --- | --- |
 | `permissions` | Check permissions in the MCP host and identify the launching app; no prompts. |
-| `list_apps` | Apps that own windows, with pid and window titles; `include_helpers` also shows window-server helpers such as a native file picker. |
-| `get_app_state` | One app's accessibility tree as indexed lines; `window` binds it to a single window, `include_screenshot` attaches a PNG, `max_output_chars` caps the reply. |
+| `list_apps` | Launchable apps as JSON, addressed by bundle id, name or path; `isRunning` and the policy marker show the current state. |
+| `get_app_state` | Launches the app if needed, then returns indexed accessibility state, a window screenshot by default, and a diff unless `disableDiff` is true. |
 | `query` | Search that tree by text and/or role without printing all of it. Also refreshes the indexes. |
-| `click` | `AXPress` when the element has it, otherwise a pointer click at its center or at `x`/`y`; the reply says which ran. |
+| `click` | `AXPress` for a plain left click when available; otherwise a pointer click with middle/right buttons, click count, held modifier, duration, or app-window `x`/`y`. |
 | `perform_secondary_action` | A named AX action such as `AXShowMenu`; an action the element does not support is refused with the list it does support. |
 | `set_value` | Writes `AXValue` only when the element reports it settable, then reads it back. |
-| `select_text` | Selects a span inside a text element, counted in UTF-16 units like Cocoa ranges. |
+| `select_text` | Selects text with prefix/suffix disambiguation, or places the cursor before/after it, using UTF-16 Cocoa ranges. |
 | `type_text` | Types into the focused control, a newline as `Return`; activates the app first, or `background: true` to one process. |
-| `press_key` | One key with optional `cmd`/`shift`/`alt`/`ctrl` modifiers, foreground or `background`; `\n` and `\t` are read as `Return` and `Tab`. |
-| `scroll` | Wheel events at the frontmost window, an element center, or `x`/`y`; needs no snapshot. |
-| `drag` | Paced HID drag from an element center or `from_x`/`from_y` to `to_x`/`to_y`, stopped by a person's input. |
+| `press_key` | An xdotool-style key or chord such as `Super+c` or `Control_L+a`, with optional hold duration and background delivery. |
+| `scroll` | Up/down/left/right wheel scrolling by `pages`, at an element or app-window coordinate. |
+| `drag` | Paced HID drag between app-window screenshot coordinates, stopped by a person's input. |
+| `paste` | Pastes text, Markdown or HTML and restores the previous clipboard contents. |
 | `screenshot` | A PNG of the screen or of one app's window. |
 
 Element indexes are per-process state: `get_app_state` and `query` replace the
@@ -204,7 +207,7 @@ src/runtime.rs     platform selection; macOS implementation, explicit stub elsew
 src/verify.rs      the verify command: one native check per path, with evidence
 src/macos/ax.rs    accessibility elements, attributes, actions, ranges
 src/macos/tree.rs  snapshot rendering and window binding
-src/macos/apps.rs  running apps and windows via the window server
+src/macos/apps.rs  launchable/running apps, bundle ids and windows
 src/macos/input.rs synthetic pointer, keyboard and scroll events
 src/macos/takeover.rs a listen-only event tap that yields to a person's input
 src/macos/screen.rs screenshot capture
@@ -309,8 +312,8 @@ record — with commands, evidence and what is still unverified — is
   call may have changed the screen. Nothing is pushed on a timer.
 - Native `<input type="date">` segments and web content behind a cross-origin
   picker are not reachable by AX alone.
-- No audit log or automatic screenshot after every action. Request `screenshot`
-  or `include_screenshot` for visual verification.
+- No audit log or automatic screenshot after every action. `get_app_state`
+  captures the current app window by default; action replies stay text-only.
 
 ## License
 
