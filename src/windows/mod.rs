@@ -1008,7 +1008,13 @@ impl Runtime {
     }
 
     pub fn type_text(&mut self, args: &Value) -> Result<String> {
+        if bool_arg(args, "background") && app_arg(args).is_none() {
+            bail!("`background` needs `app`: the input is addressed to that process");
+        }
         let name = required_app(args)?;
+        if bool_arg(args, "background") {
+            bail!("background keyboard delivery is unavailable on Windows; Computer Use uses the foreground desktop");
+        }
         let app = self.resolve(&name)?;
         self.authorize(&app)?;
         let window = self.window(&app, None)?;
@@ -1042,12 +1048,15 @@ impl Runtime {
     }
 
     pub fn press_key(&mut self, args: &Value) -> Result<String> {
+        let key = string_arg(args, "key").ok_or_else(|| anyhow!("`key` is required"))?;
+        let send_keys = windows_keys(&key)?;
         let name = required_app(args)?;
+        if bool_arg(args, "background") {
+            bail!("background keyboard delivery is unavailable on Windows; Computer Use uses the foreground desktop");
+        }
         let app = self.resolve(&name)?;
         self.authorize(&app)?;
         let window = self.window(&app, None)?;
-        let key = string_arg(args, "key").ok_or_else(|| anyhow!("`key` is required"))?;
-        let send_keys = windows_keys(&key)?;
         window
             .element
             .set_focus()
@@ -1242,7 +1251,9 @@ fn windows_keys(spec: &str) -> Result<String> {
         "space" => " ".to_string(),
         key if key.starts_with('f') && key[1..].parse::<u8>().is_ok() => format!("{{{key}}}"),
         key if key.chars().count() == 1 => key.to_string(),
-        other => bail!("unknown Windows key `{other}`"),
+        other => bail!(
+            "unknown Windows key `{other}`; use Return, Tab, Escape, arrows, Page_Up/Page_Down, F1-F20 or a single character"
+        ),
     };
     output.push_str(&key);
     Ok(output)

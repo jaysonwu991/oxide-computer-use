@@ -76,11 +76,10 @@ pub fn status() -> Value {
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
 mod tests {
     use super::*;
 
-    #[cfg(target_os = "macos")]
     #[test]
     fn finds_the_outer_app_bundle_in_helper_and_harness_paths() {
         assert_eq!(
