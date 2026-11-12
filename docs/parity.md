@@ -118,7 +118,7 @@ unlock/display covering/relock, terminal and self-automation policy equivalence.
 *Notarization, pinned runtime provenance/version, CI architecture coverage,
 installer/update integration, stable signing/grants across updates.*
 
-- **Provenance: implemented here.** `install.sh` writes `.oxide-reins-install`
+- **Provenance: implemented here.** `install.sh` writes `.oxide-computer-use-install`
   beside the binary with the release, version, platform and the installed
   binary's SHA-256, and `doctor --json` reports it as `provenance.install` along
   with the binary that is running, the target it was built for and whether it is
@@ -216,7 +216,7 @@ matched operation for operation:
   previous clipboard data type.
 - `type_text`, `set_value` and `perform_secondary_action` retain their existing
   verified-write and action support, including background keyboard delivery as
-  an oxide-reins extension.
+  an oxide-computer-use extension.
 
 The transport is still MCP rather than Codex's private JavaScript facade, and the
 Windows runtime, locked-use flow, settings UI and optional audio recording remain

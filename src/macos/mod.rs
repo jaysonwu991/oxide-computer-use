@@ -1,4 +1,4 @@
-//! macOS oxide-reins backend: accessibility snapshots plus synthetic input.
+//! macOS oxide-computer-use backend: accessibility snapshots plus synthetic input.
 
 pub mod apps;
 pub mod ax;
@@ -397,7 +397,7 @@ impl Runtime {
             && self.policy.is_terminal(&app.name, app.identity.as_ref())
         {
             bail!(
-                "`{}` is a terminal{}, and the policy refuses terminal automation: typing into a shell can start another agent. Allow it with `oxide-reins apps terminals allow` if that is intended",
+                "`{}` is a terminal{}, and the policy refuses terminal automation: typing into a shell can start another agent. Allow it with `oxide-computer-use apps terminals allow` if that is intended",
                 app.name,
                 app.identity
                     .as_ref()
@@ -409,7 +409,7 @@ impl Runtime {
             if let (Some(host), Some(identity)) = (self.host.as_deref(), app.identity.as_ref()) {
                 if drives_itself(Some(host), Some(&identity.path)) {
                     bail!(
-                        "`{}` is the app hosting this MCP server ({host}), and the policy refuses self-automation. Name another app, or allow it with `oxide-reins apps self-automation allow`",
+                        "`{}` is the app hosting this MCP server ({host}), and the policy refuses self-automation. Name another app, or allow it with `oxide-computer-use apps self-automation allow`",
                         app.name
                     );
                 }
@@ -429,7 +429,7 @@ impl Runtime {
             return Ok(());
         }
         bail!(
-            "`{}` is a terminal{}, and the policy refuses terminal automation: typing into a shell can start another agent. Allow it with `oxide-reins apps terminals allow` if that is intended",
+            "`{}` is a terminal{}, and the policy refuses terminal automation: typing into a shell can start another agent. Allow it with `oxide-computer-use apps terminals allow` if that is intended",
             app.name,
             match &identity {
                 Some(identity) => format!(" ({})", identity.bundle_id),
@@ -453,7 +453,7 @@ impl Runtime {
             return Ok(());
         }
         bail!(
-            "`{}` is the app hosting this MCP server ({host}), and the policy refuses self-automation: clicking the window you are shown in loops. Name another app, or allow it with `oxide-reins apps self-automation allow`",
+            "`{}` is the app hosting this MCP server ({host}), and the policy refuses self-automation: clicking the window you are shown in loops. Name another app, or allow it with `oxide-computer-use apps self-automation allow`",
             app.name
         )
     }

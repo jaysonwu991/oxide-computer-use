@@ -22,7 +22,7 @@ pub const SUPPORTED_VERSIONS: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-
 /// stdio equivalent of a preview that keeps up.
 pub const SCREEN_URI: &str = "computer-use://screen";
 
-pub const INSTRUCTIONS: &str = "Use this server for GUI control of macOS desktop apps and signed-in browser tasks, matching Codex Computer Use's macOS window API. Tools: permissions, list_apps, get_app_state, query, click, perform_secondary_action, set_value, select_text, type_text, press_key, scroll, drag, paste, screenshot. list_apps accepts bundle identifiers and paths; get_app_state launches an app if needed, returns its accessibility state plus a window screenshot by default, and returns a diff unless disableDiff is true. Call permissions for setup diagnostics in the actual MCP host, list_apps to find the target, then get_app_state before acting on indexes from its newest snapshot. Coordinates for click, scroll and drag are relative to the app-window screenshot. paste supports text, md and html and restores the previous clipboard. press_key takes xdotool-style names and chords such as Return, Tab, Super+c or Control_L+a, with an optional duration. Re-observe after actions; read computer-use://screen for a fresh capture and subscribe to updates. A newline inside type_text is pressed as Return. type_text and press_key with background true deliver to one app without activating it. The app policy decides which apps are reachable: an unapproved app is refused with `oxide-reins apps grant-once` or `apps allow`, and `apps revoke` reaches a running session. A person moving the pointer or typing during a paced action stops it: that is user takeover. Respect requests to leave submission to the user. Never approve OS permission dialogs yourself. If a tool search does not list these tools, the MCP connection is missing rather than the capability.";
+pub const INSTRUCTIONS: &str = "Use this server for GUI control of macOS desktop apps and signed-in browser tasks, matching Codex Computer Use's macOS window API. Tools: permissions, list_apps, get_app_state, query, click, perform_secondary_action, set_value, select_text, type_text, press_key, scroll, drag, paste, screenshot. list_apps accepts bundle identifiers and paths; get_app_state launches an app if needed, returns its accessibility state plus a window screenshot by default, and returns a diff unless disableDiff is true. Call permissions for setup diagnostics in the actual MCP host, list_apps to find the target, then get_app_state before acting on indexes from its newest snapshot. Coordinates for click, scroll and drag are relative to the app-window screenshot. paste supports text, md and html and restores the previous clipboard. press_key takes xdotool-style names and chords such as Return, Tab, Super+c or Control_L+a, with an optional duration. Re-observe after actions; read computer-use://screen for a fresh capture and subscribe to updates. A newline inside type_text is pressed as Return. type_text and press_key with background true deliver to one app without activating it. The app policy decides which apps are reachable: an unapproved app is refused with `oxide-computer-use apps grant-once` or `apps allow`, and `apps revoke` reaches a running session. A person moving the pointer or typing during a paced action stops it: that is user takeover. Respect requests to leave submission to the user. Never approve OS permission dialogs yourself. If a tool search does not list these tools, the MCP connection is missing rather than the capability.";
 
 fn negotiated_version(requested: Option<&str>) -> String {
     match requested {
@@ -109,7 +109,7 @@ impl Server {
                     "resources": { "subscribe": true, "listChanged": false }
                 },
                 "serverInfo": {
-                    "name": "oxide-reins",
+                    "name": "oxide-computer-use",
                     "version": env!("CARGO_PKG_VERSION")
                 },
                 "instructions": INSTRUCTIONS
@@ -303,7 +303,7 @@ mod tests {
         );
         assert_eq!(
             response["result"]["serverInfo"]["name"],
-            json!("oxide-reins")
+            json!("oxide-computer-use")
         );
         assert!(response["result"]["capabilities"]["tools"].is_object());
         assert_eq!(

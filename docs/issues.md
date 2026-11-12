@@ -40,7 +40,7 @@ design; "mitigated" means the failure is possible but reported accurately;
 | [#40](https://github.com/iFurySt/open-computer-use/issues/40) 1200-node ceiling hides content | Mitigated: the reply says it truncated and how to raise it; `max_tree_nodes` and `max_tree_depth` are parameters. |
 | [#36](https://github.com/iFurySt/open-computer-use/issues/36) fixed 160-character truncation | Mitigated: `text_limit` per call, `"max"` for full values, and truncated values carry their true length. |
 | [#15](https://github.com/iFurySt/open-computer-use/issues/15) prompt before touching an app | Mitigated: the client's own approval prompt, plus a per-app policy enforced inside the server before any accessibility call. `apps policy deny` makes approval the default, `apps grant-once` approves one call, and an approval is pinned to the bundle identity it was given for. macOS has no OS-level per-app prompt, so this policy is the per-app control. |
-| [#12](https://github.com/iFurySt/open-computer-use/issues/12) configurable allow list | Implemented: `apps allow`, `apps deny`, `apps revoke`, `apps grant-once`, `apps policy`, `apps reset`, `apps list`, stored in `~/.config/oxide-reins/config.json` and re-read on every call; a deny rule wins over an allow list, and an unreadable file refuses every app. |
+| [#12](https://github.com/iFurySt/open-computer-use/issues/12) configurable allow list | Implemented: `apps allow`, `apps deny`, `apps revoke`, `apps grant-once`, `apps policy`, `apps reset`, `apps list`, stored in `~/.config/oxide-computer-use/config.json` and re-read on every call; a deny rule wins over an allow list, and an unreadable file refuses every app. |
 | [#39](https://github.com/iFurySt/open-computer-use/issues/39) auditing and visual feedback | Partly. Every action reply names the path it took (AX action versus pointer event), app state includes the current window screenshot, and a client subscribed to `computer-use://screen` is told after calls that could change it. There is no persistent audit log — **open**. |
 | [#11](https://github.com/iFurySt/open-computer-use/issues/11), [#18](https://github.com/iFurySt/open-computer-use/issues/18) macOS permission confusion, CLI `click` errors | Mitigated by messages: `doctor` reports both permissions and the app policy, a missing permission names the Settings pane, and an out-of-range or wrong-app index says which snapshot it belongs to. |
 | [#60](https://github.com/iFurySt/open-computer-use/issues/60), [#14](https://github.com/iFurySt/open-computer-use/issues/14), [#55](https://github.com/iFurySt/open-computer-use/issues/55) platform and product requests | Out of scope for a macOS-only server. |
@@ -56,7 +56,7 @@ answering, the takeover tap (which cannot even be installed without the grant),
 `background: true` delivery through `CGEventPostToPid` (whether a given app
 accepts it), the screen resource's capture, and refusing the hosting bundle or a
 terminal against a real `.app`. Most of those now report themselves:
-`oxide-reins verify` prints a line per path with `ok`, `MISSING` or `skipped`, so a
+`oxide-computer-use verify` prints a line per path with `ok`, `MISSING` or `skipped`, so a
 granted machine turns them into a report instead of a reading exercise, and two
 of its lines pass on an ungranted one — the bundle identity of a running app
 (`com.tencent.tenvideo at /Applications/QQLive.app`) and the two-second read bound
@@ -68,8 +68,8 @@ window server.
 To close that gap on a machine where the terminal is trusted:
 
 ```sh
-oxide-reins doctor --prompt
-oxide-reins call get_app_state --args '{"app":"TextEdit","window":0}'
-oxide-reins call click --args '{"app":"TextEdit","element_index":3}'
-oxide-reins call --calls '[{"tool":"get_app_state","args":{"app":"TextEdit","include_frames":true}},{"tool":"drag","args":{"app":"TextEdit","from_x":200,"from_y":300,"to_x":400,"to_y":300}}]'
+oxide-computer-use doctor --prompt
+oxide-computer-use call get_app_state --args '{"app":"TextEdit","window":0}'
+oxide-computer-use call click --args '{"app":"TextEdit","element_index":3}'
+oxide-computer-use call --calls '[{"tool":"get_app_state","args":{"app":"TextEdit","include_frames":true}},{"tool":"drag","args":{"app":"TextEdit","from_x":200,"from_y":300,"to_x":400,"to_y":300}}]'
 ```

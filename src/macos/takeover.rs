@@ -7,7 +7,7 @@
 //! instead of fighting the pointer. A tap that cannot be installed leaves the
 //! gesture unarbitrated rather than failing it, and whether an installed tap
 //! receives a person's events is only proven on a granted machine:
-//! `oxide-reins verify` reports the install and whether the grant exists.
+//! `oxide-computer-use verify` reports the install and whether the grant exists.
 
 use std::cell::Cell;
 use std::ffi::c_void;

@@ -1,4 +1,4 @@
-# oxide-reins
+# oxide-computer-use
 
 Computer Use as a stdio MCP server for any agent on macOS — Oxide, Claude Code,
 Codex CLI, Cursor, Claude Desktop. It lists launchable apps, reads an app's
@@ -19,7 +19,7 @@ when Oxide is the host, and
 says which half of that product this server is.
 
 ```text
-agent (Oxide / Claude Code / Codex / Cursor) ──stdio JSON-RPC──▶ oxide-reins
+agent (Oxide / Claude Code / Codex / Cursor) ──stdio JSON-RPC──▶ oxide-computer-use
                                                    ├─▶ Accessibility (AX) elements, actions, values
                                                    ├─▶ CoreGraphics pointer, keyboard, scroll
                                                    └─▶ window server + screencapture
@@ -35,17 +35,17 @@ agent (Oxide / Claude Code / Codex / Cursor) ──stdio JSON-RPC──▶ oxide
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/jaysonwu991/oxide-reins/main/install.sh | sh
-oxide-reins doctor
+curl -fsSL https://raw.githubusercontent.com/jaysonwu991/oxide-computer-use/main/install.sh | sh
+oxide-computer-use doctor
 ```
 
 The installer picks the Apple Silicon or Intel archive from the
-[latest release](https://github.com/jaysonwu991/oxide-reins/releases), checks
-its SHA-256, and installs `oxide-reins` into `~/.local/bin`. Beside the binary it
-writes `.oxide-reins-install`, naming the release, the version, the platform and
-the installed binary's SHA-256; `oxide-reins doctor` reports that marker and the
+[latest release](https://github.com/jaysonwu991/oxide-computer-use/releases), checks
+its SHA-256, and installs `oxide-computer-use` into `~/.local/bin`. Beside the binary it
+writes `.oxide-computer-use-install`, naming the release, the version, the platform and
+the installed binary's SHA-256; `oxide-computer-use doctor` reports that marker and the
 build it is running.
-`OXIDE_REINS_INSTALL_DIR`, `OXIDE_REINS_VERSION` and `OXIDE_REINS_REPO`
+`OXIDE_COMPUTER_USE_INSTALL_DIR`, `OXIDE_COMPUTER_USE_VERSION` and `OXIDE_COMPUTER_USE_REPO`
 override where it goes and what it installs. `sh install.sh --check` compares the
 installed copy with the latest release: exit 0 current, 1 update available,
 2 cannot tell. There is no Linux or Windows
@@ -56,25 +56,24 @@ archive: the tools drive macOS APIs, so another platform builds to explicit
 
 ```sh
 cargo build --release
-install -m 755 target/release/oxide-reins ~/.local/bin/oxide-reins
+install -m 755 target/release/oxide-computer-use ~/.local/bin/oxide-computer-use
 ```
 
 ## Connect a client
 
 ```sh
-oxide-reins install --client oxide     # ~/.oxide/mcp.json
-oxide-reins install --client claude    # ~/.claude.json
-oxide-reins install --client codex     # ~/.codex/config.toml
-oxide-reins install --client cursor    # ~/.cursor/mcp.json
-oxide-reins install --client desktop   # Claude Desktop
-oxide-reins install --print            # the entry, for any other client
+oxide-computer-use install --client oxide     # ~/.oxide/mcp.json
+oxide-computer-use install --client claude    # ~/.claude.json
+oxide-computer-use install --client codex     # ~/.codex/config.toml
+oxide-computer-use install --client cursor    # ~/.cursor/mcp.json
+oxide-computer-use install --client desktop   # Claude Desktop
+oxide-computer-use install --print            # the entry, for any other client
 ```
 
-It registers as `oxide-reins`, except for the clients that already ship their
-own Computer Use: Claude Code reserves `computer-use` as that name and skips a server registered
-under it, and Codex's bundled Computer Use plugin owns it, so `--client claude`
-and `--client codex` use `oxide-reins-local` and sit beside the built-in rather
-than over it. `--name` picks another name where a client has none reserved.
+It registers as `oxide-computer-use` for every supported client. That name stays
+distinct from `computer-use`, which Claude Code reserves and Codex's bundled
+Computer Use plugin owns, so Oxide, Codex and Claude Code can all load this
+server alongside their built-ins. `--name` picks another unreserved name.
 Details and the equivalent per-client commands are in
 [docs/clients.md](docs/clients.md).
 
@@ -85,8 +84,8 @@ approval prompt and the preview each belong to a different party than they do in
 a terminal setup. From a terminal on the same machine:
 
 ```sh
-oxide-reins install --client oxide      # writes ~/.oxide/mcp.json as `oxide-reins`
-oxide mcp list                          # Oxide should show `oxide-reins` connected
+oxide-computer-use install --client oxide      # writes ~/.oxide/mcp.json as `oxide-computer-use`
+oxide mcp list                          # Oxide should show `oxide-computer-use` connected
 ```
 
 Then, in this order:
@@ -96,7 +95,7 @@ Then, in this order:
    when Oxide hosts it. Quit and reopen Oxide after changing Screen Recording.
 2. **Check from the connection that is failing.** The `permissions` tool runs
    inside the process Oxide hosts and reports the launching app it observes;
-   `oxide-reins doctor` in a terminal measures that terminal instead, and the two
+   `oxide-computer-use doctor` in a terminal measures that terminal instead, and the two
    can disagree in both directions.
 3. **Two gates, and only one of them is per app.** Oxide's own approvals decide
    whether a tool call may run; the [app policy](#check-permissions-and-policy)
@@ -117,10 +116,10 @@ Then, in this order:
 ## Check permissions and policy
 
 ```sh
-oxide-reins doctor          # permissions, app policy, the build it runs
-oxide-reins doctor --prompt # ask macOS to show the permission prompts
-oxide-reins apps list
-oxide-reins apps deny "1Password"
+oxide-computer-use doctor          # permissions, app policy, the build it runs
+oxide-computer-use doctor --prompt # ask macOS to show the permission prompts
+oxide-computer-use apps list
+oxide-computer-use apps deny "1Password"
 ```
 
 An approval is per app and can name the bundle identity it was given for, so a
@@ -159,15 +158,15 @@ being applied to whatever is there now.
 ## Call it without an agent
 
 ```sh
-oxide-reins call list_apps
-oxide-reins call get_app_state --args '{"app":"TextEdit","window":0}'
-oxide-reins call click --args '{"app":"TextEdit","element_index":12}'
+oxide-computer-use call list_apps
+oxide-computer-use call get_app_state --args '{"app":"TextEdit","window":0}'
+oxide-computer-use call click --args '{"app":"TextEdit","element_index":12}'
 ```
 
 A sequence shares one process and one snapshot state:
 
 ```sh
-oxide-reins call --calls '[
+oxide-computer-use call --calls '[
   {"tool":"get_app_state","args":{"app":"TextEdit"}},
   {"tool":"select_text","args":{"app":"TextEdit","element_index":9,"text":"Hello"}},
   {"tool":"press_key","args":{"app":"TextEdit","key":"c","modifiers":"cmd"}}
@@ -304,7 +303,7 @@ record — with commands, evidence and what is still unverified — is
 - Pointer input needs the target app in front. `set_value` and `AXPress` work in
   the background, and an app that keeps its own key focus may ignore background
   keys, so the reply asks for verification.
-- `oxide-reins verify` proves what the machine can do (tree, capture, identity,
+- `oxide-computer-use verify` proves what the machine can do (tree, capture, identity,
   read bound, takeover tap, background typing) and exits nonzero when a path is
   missing; it does not grant a permission.
 - The preview is a resource, not a stream: `resources/read` on
