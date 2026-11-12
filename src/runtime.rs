@@ -45,6 +45,10 @@ mod unsupported {
             Self::unsupported()
         }
 
+        pub fn app_policy(&mut self, _: &Value) -> Result<String> {
+            Self::unsupported()
+        }
+
         pub fn get_app_state(&mut self, _: &Value) -> Result<State> {
             Self::unsupported()
         }

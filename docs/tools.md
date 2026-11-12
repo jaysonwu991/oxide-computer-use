@@ -150,6 +150,22 @@ running app bundles that live elsewhere. The reply is a JSON array:
 path. The policy field is a statement only: a blocked app is still listed so a
 person can see why it cannot be reached and which command changes that.
 
+### `app_policy`
+
+Reads or changes the per-app access used by Oxide's Computer Use settings.
+
+| Parameter | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `action` | string | required | `list`, `allow`, `grant_once`, `deny`, `revoke`, `set_default`, `set_self_automation`, `set_terminals` or `reset`. |
+| `app` | string | — | Bundle id, name, path or `@App` mention for an app operation. |
+| `mode` | `"allow"` or `"deny"` | — | Fallback for a `set_*` operation. |
+
+The reply contains the resolved default, allow/deny lists, pinned identities,
+one-time grant, self-automation and terminal settings, plus launchable app rows
+with their current policy. Oxide calls this tool from its Computer Use settings
+dialog, so Always allow, Allow once, Block and Revoke all use the same
+bundle-identity checks as an agent call.
+
 ### `get_app_state`
 
 Launches the app if necessary and reads its accessibility tree. The first read

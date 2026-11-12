@@ -55,7 +55,7 @@ fn tools_lists_every_registered_tool() {
     let (stdout, _, ok) = run(&["tools"]);
     assert!(ok);
     let names: Vec<&str> = stdout.lines().collect();
-    assert_eq!(names.len(), 14, "unexpected tool list: {stdout}");
+    assert_eq!(names.len(), 15, "unexpected tool list: {stdout}");
     assert!(names.contains(&"list_apps"));
     assert!(names.contains(&"get_app_state"));
     assert!(names.contains(&"set_value"));
@@ -112,7 +112,7 @@ fn the_mcp_server_answers_initialize_and_tools_list() {
     assert_eq!(responses[1]["id"], json!(2));
     assert!(responses[1]["result"]["tools"]
         .as_array()
-        .is_some_and(|tools| tools.len() == 14));
+        .is_some_and(|tools| tools.len() == 15));
 }
 
 #[test]
@@ -342,6 +342,43 @@ fn the_app_policy_round_trips_through_the_cli() {
 }
 
 #[test]
+fn app_policy_tool_backs_the_client_settings_ui() {
+    let home = temporary_home("app-policy-tool");
+    let (stdout, stderr, ok) = run_with_home(
+        &home,
+        &[
+            "call",
+            "app_policy",
+            "--args",
+            "{\"action\":\"deny\",\"app\":\"1Password\"}",
+        ],
+    );
+    assert!(ok, "{stderr}");
+    let result: Value = serde_json::from_str(&stdout).unwrap();
+    let state: Value =
+        serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(state["denied"], json!(["1Password"]));
+    assert_eq!(config_of(&home)["denied_apps"], json!(["1Password"]));
+
+    let (stdout, stderr, ok) = run_with_home(
+        &home,
+        &[
+            "call",
+            "app_policy",
+            "--args",
+            "{\"action\":\"revoke\",\"app\":\"1Password\"}",
+        ],
+    );
+    assert!(ok, "{stderr}");
+    let result: Value = serde_json::from_str(&stdout).unwrap();
+    let state: Value =
+        serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(state["denied"], json!([]));
+
+    std::fs::remove_dir_all(&home).ok();
+}
+
+#[test]
 fn a_policy_file_that_does_not_parse_refuses_every_app() {
     let home = temporary_home("policy-broken");
     let path = home.join(".config/oxide-computer-use/config.json");
@@ -403,7 +440,7 @@ fn tools_json_prints_the_surface_an_agent_searches() {
     assert!(ok, "{stderr}");
     let specs: Value = serde_json::from_str(&stdout).unwrap();
     let specs = specs.as_array().expect("tools --json prints an array");
-    assert_eq!(specs.len(), 14);
+    assert_eq!(specs.len(), 15);
     for tool in specs {
         assert!(tool["name"].as_str().is_some_and(|name| !name.is_empty()));
         let description = tool["description"].as_str().unwrap_or_default();
