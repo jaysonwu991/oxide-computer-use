@@ -1,3 +1,4 @@
 /target
+locked-use/target/
 *.png
 .DS_Store
