@@ -1,0 +1,13 @@
+[package]
+name = "oxide-computer-use-locked-use"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+publish = false
+license = "MIT"
+description = "Fail-closed authorization design for future Oxide Computer Use locked use"
+
+[lib]
+name = "oxide_computer_use_locked_use"
+path = "src/lib.rs"
+
