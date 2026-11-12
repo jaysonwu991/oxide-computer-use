@@ -88,9 +88,9 @@ The `Runtime` keeps a `Vec<Cached>` of retained elements plus the app name they
 came from. `get_app_state` and `query` replace it; actions read it. Because it is
 in-memory state, it lives exactly as long as the process:
 
-- `oxide-reins mcp` — one snapshot for the whole connection, so an agent can read
+- `oxide-computer-use mcp` — one snapshot for the whole connection, so an agent can read
   once and act several times.
-- `oxide-reins call ...` — one process per command; a sequence in `--calls`
+- `oxide-computer-use call ...` — one process per command; a sequence in `--calls`
   shares one `Runtime`, which is why a read followed by an action works there.
 - Two agents in two processes never share or corrupt each other's indexes.
 
@@ -128,7 +128,7 @@ first keystroke, pointer movement or scroll from anyone else releases what is
 held and fails the call with `user takeover`, rather than fighting the pointer.
 A tap the window server refuses leaves the gesture without that arbitration, and
 whether an installed tap receives a person's events is only proven on a granted
-machine; `oxide-reins verify` reports both.
+machine; `oxide-computer-use verify` reports both.
 
 `type_text` and `press_key` take `background`, which aims the same events at one
 process with `CGEventPostToPid` instead of the HID tap: the app is not activated

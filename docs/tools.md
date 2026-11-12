@@ -1,7 +1,7 @@
 # Tool reference
 
 Every tool is available as an MCP tool (`tools/list`, `tools/call`) and through
-the CLI (`oxide-reins call <tool> --args '<json>'`). The schemas are defined
+the CLI (`oxide-computer-use call <tool> --args '<json>'`). The schemas are defined
 once in `src/tools.rs`; this page explains what each one does with them.
 
 ## Conventions that apply to every tool
@@ -50,7 +50,7 @@ authoritative, which is what keeps a renamed app from slipping through.
 **Self-automation** is a rule of its own, checked after the app policy: the app
 bundle that launched this server is refused by default, because an agent clicking
 the window it is shown in is a loop. The refusal names the bundle and
-`oxide-reins apps self-automation allow`. A server started from a shell has no
+`oxide-computer-use apps self-automation allow`. A server started from a shell has no
 app bundle above it, so nothing is refused there; a server hosted by Oxide, an
 editor or a terminal refuses that host and reaches everything else normally.
 
@@ -61,8 +61,8 @@ app's accessibility tree. The number on the left of each line is the
 `element_index` that `click`, `perform_secondary_action`, `set_value`,
 `select_text`, `type_text`, `scroll` and `drag` take.
 
-- Indexes belong to the newest snapshot **of that process**. `oxide-reins mcp`
-  keeps one snapshot for the life of the connection; `oxide-reins call` can run
+- Indexes belong to the newest snapshot **of that process**. `oxide-computer-use mcp`
+  keeps one snapshot for the life of the connection; `oxide-computer-use call` can run
   a whole sequence in one process with `--calls` (`--calls-file` too).
 - Each index is bound to the `AXWindow` it was captured in. Before acting, the
   server walks up from the element and compares window identity; if the element
@@ -403,7 +403,7 @@ not come from this process, and the first such keystroke, pointer movement or
 scroll releases the button at the last position and fails the call with "user
 takeover". A tap the window server refuses leaves the drag without that arbitration, and
 whether an installed tap receives a person's events is only proven on a granted
-machine; `oxide-reins verify` reports both.
+machine; `oxide-computer-use verify` reports both.
 
 ### `paste`
 

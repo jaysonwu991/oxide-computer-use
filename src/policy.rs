@@ -174,10 +174,14 @@ pub struct Policy {
 }
 
 fn path_from(home: Option<&Path>) -> Option<PathBuf> {
-    if let Some(custom) = std::env::var_os("OXIDE_REINS_CONFIG") {
+    if let Some(custom) = std::env::var_os("OXIDE_COMPUTER_USE_CONFIG") {
         return Some(PathBuf::from(custom));
     }
-    home.map(|home| home.join(".config").join("oxide-reins").join("config.json"))
+    home.map(|home| {
+        home.join(".config")
+            .join("oxide-computer-use")
+            .join("config.json")
+    })
 }
 
 fn same(rule: &str, app: &str) -> bool {
@@ -329,7 +333,7 @@ impl Policy {
             }
             Err(error) => {
                 *self.error.borrow_mut() = Some(format!(
-                    "{error:#}; every app is refused until the file parses. Fix it, or run `oxide-reins apps reset`"
+                    "{error:#}; every app is refused until the file parses. Fix it, or run `oxide-computer-use apps reset`"
                 ));
             }
         }
@@ -416,7 +420,7 @@ impl Policy {
         let rules = self.rules.borrow();
         if rules.denied.iter().any(|rule| matches(rule, app, identity)) {
             return Access::Blocked(format!(
-                "`{app}` is on the deny list; lift it with `oxide-reins apps revoke \"{app}\"` if that is not what you want"
+                "`{app}` is on the deny list; lift it with `oxide-computer-use apps revoke \"{app}\"` if that is not what you want"
             ));
         }
         if rules
@@ -430,11 +434,11 @@ impl Policy {
             return match identity {
                 Some(live) if live.bundle_id == recorded.bundle_id => Access::Allowed,
                 Some(live) => Access::Blocked(format!(
-                    "`{app}` was approved as {} at {}, but this process is {} at {}; a different app now answers to that name. Re-approve it with `oxide-reins apps allow \"{app}\"` if that is intended",
+                    "`{app}` was approved as {} at {}, but this process is {} at {}; a different app now answers to that name. Re-approve it with `oxide-computer-use apps allow \"{app}\"` if that is intended",
                     recorded.bundle_id, recorded.path, live.bundle_id, live.path
                 )),
                 None => Access::Blocked(format!(
-                    "`{app}` was approved as {}, but this runtime cannot read the running app's bundle identifier, so it does not trust the name alone. Re-approve it with `oxide-reins apps allow \"{app}\"`",
+                    "`{app}` was approved as {}, but this runtime cannot read the running app's bundle identifier, so it does not trust the name alone. Re-approve it with `oxide-computer-use apps allow \"{app}\"`",
                     recorded.bundle_id
                 )),
             };
@@ -444,7 +448,7 @@ impl Policy {
                 return match (&grant.identity, identity) {
                     (Some(recorded), Some(live)) if recorded.bundle_id != live.bundle_id => {
                         Access::Blocked(format!(
-                            "the one-time approval for `{app}` names {}, not the running {} at {}; approve it again with `oxide-reins apps grant-once \"{app}\"`",
+                            "the one-time approval for `{app}` names {}, not the running {} at {}; approve it again with `oxide-computer-use apps grant-once \"{app}\"`",
                             recorded.bundle_id, live.bundle_id, live.path
                         ))
                     }
@@ -455,7 +459,7 @@ impl Policy {
         match rules.fallback() {
             Fallback::Allow => Access::Allowed,
             Fallback::Deny => Access::Blocked(format!(
-                "`{app}` is not approved. Approve one call with `oxide-reins apps grant-once \"{app}\"`, or every call from now on with `oxide-reins apps allow \"{app}\"`"
+                "`{app}` is not approved. Approve one call with `oxide-computer-use apps grant-once \"{app}\"`, or every call from now on with `oxide-computer-use apps allow \"{app}\"`"
             )),
         }
     }
@@ -613,7 +617,9 @@ impl Policy {
 
     fn save(&self) -> Result<()> {
         let Some(path) = &self.path else {
-            bail!("no config path; set HOME, or OXIDE_REINS_CONFIG, to store an app decision");
+            bail!(
+                "no config path; set HOME, or OXIDE_COMPUTER_USE_CONFIG, to store an app decision"
+            );
         };
         write_json(path, &self.to_json())
     }
@@ -694,7 +700,7 @@ mod tests {
     fn scratch(name: &str) -> PathBuf {
         std::env::temp_dir()
             .join(format!(
-                "oxide-reins-policy-{name}-{}-{}",
+                "oxide-computer-use-policy-{name}-{}-{}",
                 std::process::id(),
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)

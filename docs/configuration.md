@@ -9,8 +9,8 @@ launches it.
 
 | File | Written by | Read by | Purpose |
 | --- | --- | --- | --- |
-| `~/.config/oxide-reins/config.json` | `oxide-reins apps allow\|deny\|revoke\|grant-once\|policy\|self-automation\|reset` | every tool call | Per-app approvals, their bundle identities, the default policy and the self-automation rule. |
-| `$OXIDE_REINS_CONFIG` | you | the server at start | Overrides the policy path (a file, not a directory). |
+| `~/.config/oxide-computer-use/config.json` | `oxide-computer-use apps allow\|deny\|revoke\|grant-once\|policy\|self-automation\|reset` | every tool call | Per-app approvals, their bundle identities, the default policy and the self-automation rule. |
+| `$OXIDE_COMPUTER_USE_CONFIG` | you | the server at start | Overrides the policy path (a file, not a directory). |
 | `~/.oxide/mcp.json` | `install --client oxide` | Oxide | Global MCP servers. |
 | `./.oxide/mcp.json` | `install --client oxide --project` | Oxide | Project MCP servers. |
 | `~/.claude.json` | `install --client claude` | Claude Code | User-scope MCP servers. |
@@ -28,20 +28,17 @@ rename, so an interrupted write cannot truncate a config. In
 Codex's `[computer_use]` app-access policy, its bundled plugin entries and the
 `~/.codex/computer-use/` component directory untouched.
 
-`HOME` decides where all of the above lives. `OXIDE_REINS_CONFIG` is the only
+`HOME` decides where all of the above lives. `OXIDE_COMPUTER_USE_CONFIG` is the only
 other environment variable the server reads.
 
 ### Server name
 
-The entry is registered as `oxide-reins`, except for the two clients that ship
-their own Computer Use. Claude Code reserves `computer-use` as that exact server name and
-would skip the server; Codex's bundled Computer Use plugin already answers to it, and
-`node_repl`, `cua_repl` and `codex_apps` are names Codex gives its own MCP
-servers. `--client claude` and `--client codex` therefore register
-`oxide-reins-local`, beside a built-in server rather than over it. `--name`
-overrides the default where a client has nothing reserved, and a name a client
-does reserve is refused with that explanation. Names may contain letters, digits,
-`-` and `_` only, so every client accepts them.
+The entry is registered as `oxide-computer-use` for every client. Claude Code
+reserves `computer-use` as an exact server name, and Codex's bundled Computer Use
+plugin already owns `computer-use`, `computer_use`, `node_repl`, `cua_repl` and
+`codex_apps`; `oxide-computer-use` avoids all of those slots. `--name` picks
+another unreserved name, and a reserved name is refused with that explanation.
+Names may contain letters, digits, `-` and `_` only, so every client accepts them.
 
 ## App policy
 
@@ -88,7 +85,7 @@ Semantics:
   can tell "refused" from "not running".
 - **The file is re-read on every call.** An approval, a revocation or a one-time
   grant written by `apps allow`/`revoke`/`grant-once` in one terminal reaches an
-  `oxide-reins mcp` server that is already running; nothing has to be restarted.
+  `oxide-computer-use mcp` server that is already running; nothing has to be restarted.
 - **A file that does not parse refuses every app**, with a message naming the
   path and `apps reset`, instead of falling back to "unlisted, so allowed".
 - **Terminals are refused by default.** A terminal is a way to start another
@@ -112,15 +109,15 @@ Semantics:
 Commands:
 
 ```sh
-oxide-reins apps list                   # policy, config path and launchable apps it marks
-oxide-reins apps allow "Finder"         # approve from now on, pinned to its identity
-oxide-reins apps grant-once "Preview"   # approve exactly one call
-oxide-reins apps deny "1Password"       # always wins
-oxide-reins apps revoke "Finder"        # withdraw every decision about one app, a deny included
-oxide-reins apps policy deny            # an app with no decision is refused
-oxide-reins apps self-automation allow  # let the hosting app be driven too
-oxide-reins apps terminals allow       # let terminal emulators be driven
-oxide-reins apps reset                  # clear everything and allow every app again
+oxide-computer-use apps list                   # policy, config path and launchable apps it marks
+oxide-computer-use apps allow "Finder"         # approve from now on, pinned to its identity
+oxide-computer-use apps grant-once "Preview"   # approve exactly one call
+oxide-computer-use apps deny "1Password"       # always wins
+oxide-computer-use apps revoke "Finder"        # withdraw every decision about one app, a deny included
+oxide-computer-use apps policy deny            # an app with no decision is refused
+oxide-computer-use apps self-automation allow  # let the hosting app be driven too
+oxide-computer-use apps terminals allow       # let terminal emulators be driven
+oxide-computer-use apps reset                  # clear everything and allow every app again
 ```
 
 An app that is refused is told exactly what to ask for: the refusal message names
@@ -179,11 +176,11 @@ connection and verify the recipient in System Settings. Existing grants to
 Oxide.app do not grant the helper access. Moving/rebuilding a development bundle
 can affect attribution or leave a stale entry; recheck grants after reconnecting.
 
-`oxide-reins doctor` reports both, plus the policy, the self-automation and
+`oxide-computer-use doctor` reports both, plus the policy, the self-automation and
 terminal rules, its path and the build it runs (see
-[provenance](development.md#provenance)). `oxide-reins verify` exercises each
+[provenance](development.md#provenance)). `oxide-computer-use verify` exercises each
 native path and prints the evidence.
-`oxide-reins doctor --prompt` asks macOS to show the prompts. Neither can grant
+`oxide-computer-use doctor --prompt` asks macOS to show the prompts. Neither can grant
 on your behalf; only System Settings can.
 
 ## Exit codes
@@ -193,7 +190,7 @@ on your behalf; only System Settings can.
 | 0 | The command ran. A tool may still report `isError: true` — see below. |
 | 1 | The command failed: bad arguments, unknown tool, client config it could not parse, or `doctor` finding a missing permission. |
 
-`oxide-reins call` prints the MCP-shaped result for every call, including
+`oxide-computer-use call` prints the MCP-shaped result for every call, including
 failures, and exits 1 if any call in the batch failed. That makes it usable in a
 shell pipeline while keeping the agent-facing message intact.
 
@@ -202,7 +199,7 @@ shell pipeline while keeping the agent-facing message intact.
 
 The optional [Oxide helper](oxide-helper.md) starts through LaunchServices, which
 does not inherit the MCP caller's environment/cwd as a normal child process does.
-Its proxy explicitly transfers `HOME`, `OXIDE_REINS_CONFIG` and the working
+Its proxy explicitly transfers `HOME`, `OXIDE_COMPUTER_USE_CONFIG` and the working
 directory through a private context file before starting the bundled server.
 This preserves a relative custom policy path and its allow/deny decisions. Other
 caller environment variables are not forwarded. The helper smoke check includes

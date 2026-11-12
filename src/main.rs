@@ -21,7 +21,7 @@ use runtime::Runtime;
 
 #[derive(Parser)]
 #[command(
-    name = "oxide-reins",
+    name = "oxide-computer-use",
     version,
     about = "Computer Use MCP server for any agent: Oxide, Claude Code, Codex or Cursor, driving macOS apps through native accessibility APIs"
 )]
@@ -90,10 +90,9 @@ enum Command {
         /// Write the project-scoped config instead of the user-scoped one.
         #[arg(long)]
         project: bool,
-        /// Server name to register. Defaults to `oxide-reins`, or
-        /// `oxide-reins-local` for the clients that ship their own Computer
-        /// Use: Claude Code reserves the plain name, and Codex's bundled plugin
-        /// owns it.
+        /// Server name to register. Defaults to `oxide-computer-use`, which is
+        /// distinct from the `computer-use` names reserved by Claude Code and
+        /// Codex's bundled plugin.
         #[arg(long)]
         name: Option<String>,
         /// Print the config entry instead of writing a file.
@@ -142,7 +141,7 @@ enum AppsCommand {
 
 fn main() {
     if let Err(error) = run() {
-        eprintln!("oxide-reins: {error:#}");
+        eprintln!("oxide-computer-use: {error:#}");
         std::process::exit(1);
     }
 }
@@ -299,7 +298,7 @@ fn apps(command: AppsCommand) -> Result<()> {
                     identity.bundle_id, identity.path
                 ),
                 None => println!(
-                    "Allowed `{app}` by name; run `oxide-reins apps allow \"{app}\"` while it is running to pin its bundle identity."
+                    "Allowed `{app}` by name; run `oxide-computer-use apps allow \"{app}\"` while it is running to pin its bundle identity."
                 ),
             }
             println!("{}", policy.describe());
@@ -374,7 +373,7 @@ fn provenance() -> Value {
     let marker = executable
         .as_deref()
         .and_then(|path| path.parent())
-        .map(|directory| directory.join(".oxide-reins-install"))
+        .map(|directory| directory.join(".oxide-computer-use-install"))
         .and_then(|path| std::fs::read_to_string(path).ok())
         .map(|text| {
             let mut fields = serde_json::Map::new();
@@ -431,7 +430,7 @@ fn doctor(as_json: bool, prompt: bool) -> Result<()> {
             }))?
         );
     } else {
-        println!("oxide-reins {}", env!("CARGO_PKG_VERSION"));
+        println!("oxide-computer-use {}", env!("CARGO_PKG_VERSION"));
         println!(
             "macOS: {}",
             version.clone().unwrap_or_else(|| "unknown".to_string())

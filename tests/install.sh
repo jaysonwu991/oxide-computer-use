@@ -11,20 +11,20 @@ stage() {
     mkdir -p "$work/releases/latest/download"
     {
         printf 'version: %s\n' "$1"
-        printf 'macos-arm64: oxide-reins-macos-arm64.tar.gz\n'
-        printf 'macos-x64: oxide-reins-macos-x64.tar.gz\n'
-    } > "$work/releases/latest/download/oxide-reins-manifest"
+        printf 'macos-arm64: oxide-computer-use-macos-arm64.tar.gz\n'
+        printf 'macos-x64: oxide-computer-use-macos-x64.tar.gz\n'
+    } > "$work/releases/latest/download/oxide-computer-use-manifest"
 }
 
 mark() {
     mkdir -p "$work/bin"
-    printf 'source example/oxide-reins\nversion %s\nplatform macos-arm64\nsha256 00\n' "$1" \
-        > "$work/bin/.oxide-reins-install"
+    printf 'source example/oxide-computer-use\nversion %s\nplatform macos-arm64\nsha256 00\n' "$1" \
+        > "$work/bin/.oxide-computer-use-install"
 }
 
 check() {
-    OXIDE_REINS_RELEASES="file://$work/releases" \
-        OXIDE_REINS_INSTALL_DIR="$work/bin" \
+    OXIDE_COMPUTER_USE_RELEASES="file://$work/releases" \
+        OXIDE_COMPUTER_USE_INSTALL_DIR="$work/bin" \
         sh "$script" --check >"$work/out" 2>&1
 }
 
@@ -45,7 +45,7 @@ check || status=$?
 grep -q '0\.2\.0' "$work/out" || fail "the installed version should be named"
 grep -q '0\.3\.0' "$work/out" || fail "the available version should be named"
 
-rm -f "$work/bin/.oxide-reins-install"
+rm -f "$work/bin/.oxide-computer-use-install"
 status=0
 check || status=$?
 [ "$status" = 2 ] || fail "no installed copy should exit 2, got ${status}"

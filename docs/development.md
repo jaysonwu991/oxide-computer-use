@@ -20,11 +20,11 @@ cargo fmt --check
 ```
 
 ```sh
-./target/debug/oxide-reins tools
-./target/debug/oxide-reins doctor
-./target/debug/oxide-reins call list_apps
-./target/debug/oxide-reins install --client codex --print
-printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | ./target/debug/oxide-reins mcp
+./target/debug/oxide-computer-use tools
+./target/debug/oxide-computer-use doctor
+./target/debug/oxide-computer-use call list_apps
+./target/debug/oxide-computer-use install --client codex --print
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | ./target/debug/oxide-computer-use mcp
 ```
 
 ```sh
@@ -65,16 +65,16 @@ the substitute.
 
 ## Provenance
 
-`install.sh` writes `.oxide-reins-install` beside the installed binary:
+`install.sh` writes `.oxide-computer-use-install` beside the installed binary:
 
 ```text
-source jaysonwu991/oxide-reins
+source jaysonwu991/oxide-computer-use
 version 0.1.0
 platform darwin-arm64
 sha256 3f2c…
 ```
 
-`oxide-reins doctor --json` reports that marker as `provenance.install`, together
+`oxide-computer-use doctor --json` reports that marker as `provenance.install`, together
 with `provenance.path` (the binary that is actually running), `provenance.target`
 (the build's architecture and OS) and `provenance.profile` (debug or release). A
 client that bundles the runtime — the Oxide helper copies it into an app — can
@@ -169,31 +169,31 @@ should do the same. Filter helper surfaces at the enumeration layer, as
 
 ## Manual smoke checklist
 
-On a machine where the terminal is trusted (`oxide-reins doctor` reports both
+On a machine where the terminal is trusted (`oxide-computer-use doctor` reports both
 permissions granted):
 
 ```sh
-oxide-reins call list_apps
-oxide-reins call get_app_state --args '{"app":"TextEdit","window":0,"include_frames":true}'
-oxide-reins call click --args '{"app":"TextEdit","element_index":6}'
-oxide-reins call set_value --args '{"app":"TextEdit","element_index":6,"value":"hello"}'
-oxide-reins call select_text --args '{"app":"TextEdit","element_index":6,"text":"hello"}'
-oxide-reins call press_key --args '{"app":"TextEdit","key":"c","modifiers":"cmd"}'
-oxide-reins call drag --args '{"app":"TextEdit","from_x":300,"from_y":300,"to_x":500,"to_y":300}'
-oxide-reins call get_app_state --args '{"app":"TextEdit","include_screenshot":true}'
-oxide-reins call type_text --args '{"app":"TextEdit","text":"line one\nline two"}'
-oxide-reins call press_key --args '{"key":"\\n"}'
-oxide-reins apps list
-oxide-reins apps policy deny
-oxide-reins call get_app_state --args '{"app":"TextEdit"}'   # refused, naming grant-once and allow
-oxide-reins apps grant-once "TextEdit"
-oxide-reins call get_app_state --args '{"app":"TextEdit"}'   # allowed once, then the grant is gone
-oxide-reins apps revoke "TextEdit"
-oxide-reins apps self-automation deny
-oxide-reins call type_text --args '{"app":"TextEdit","text":"background","background":true}'
+oxide-computer-use call list_apps
+oxide-computer-use call get_app_state --args '{"app":"TextEdit","window":0,"include_frames":true}'
+oxide-computer-use call click --args '{"app":"TextEdit","element_index":6}'
+oxide-computer-use call set_value --args '{"app":"TextEdit","element_index":6,"value":"hello"}'
+oxide-computer-use call select_text --args '{"app":"TextEdit","element_index":6,"text":"hello"}'
+oxide-computer-use call press_key --args '{"app":"TextEdit","key":"c","modifiers":"cmd"}'
+oxide-computer-use call drag --args '{"app":"TextEdit","from_x":300,"from_y":300,"to_x":500,"to_y":300}'
+oxide-computer-use call get_app_state --args '{"app":"TextEdit","include_screenshot":true}'
+oxide-computer-use call type_text --args '{"app":"TextEdit","text":"line one\nline two"}'
+oxide-computer-use call press_key --args '{"key":"\\n"}'
+oxide-computer-use apps list
+oxide-computer-use apps policy deny
+oxide-computer-use call get_app_state --args '{"app":"TextEdit"}'   # refused, naming grant-once and allow
+oxide-computer-use apps grant-once "TextEdit"
+oxide-computer-use call get_app_state --args '{"app":"TextEdit"}'   # allowed once, then the grant is gone
+oxide-computer-use apps revoke "TextEdit"
+oxide-computer-use apps self-automation deny
+oxide-computer-use call type_text --args '{"app":"TextEdit","text":"background","background":true}'
 # an app that stops answering must fail the read, not wedge the server
 pid=$(pgrep -x TextEdit); kill -STOP "$pid"
-oxide-reins call get_app_state --args '{"app":"TextEdit"}'
+oxide-computer-use call get_app_state --args '{"app":"TextEdit"}'
 kill -CONT "$pid"
 ```
 
@@ -214,7 +214,7 @@ and each action is followed by one `notifications/resources/updated`. Then run
 the same sequence through `--calls` and confirm the indexes stay valid across
 calls. The stopped app is the exception: its `get_app_state` fails with `the app
 did not answer within 2 seconds` instead of returning an empty tree, the previous
-snapshot's indexes still address what they came from, `oxide-reins tools` keeps
+snapshot's indexes still address what they came from, `oxide-computer-use tools` keeps
 answering from the same process, and the call after `kill -CONT` reads the tree
 again.
 
@@ -237,7 +237,7 @@ A release is a draft that a maintainer publishes. Two workflows split the job:
      with `scripts/set-version.sh v<version>` and refreshes `Cargo.lock` with
      `cargo update --workspace`, so the binary reports the release it came from;
      neither change is committed back.
-   - `attach` — writes `oxide-reins-manifest` and uploads the two archives,
+   - `attach` — writes `oxide-computer-use-manifest` and uploads the two archives,
      their `.sha256` files, the manifest and `install.sh` itself, which makes
      `releases/latest/download/install.sh` address the current release. It does
      not create the release and does not touch the notes: a tag pushed by hand
@@ -249,7 +249,7 @@ resolves `v0.0.1`: **Actions → Release Drafter → Run workflow** with
 `version: v0.1.0`.
 
 `install.sh` reads the release through that manifest, or one pinned with
-`OXIDE_REINS_VERSION`. Its failure paths matter more than its happy path: with
+`OXIDE_COMPUTER_USE_VERSION`. Its failure paths matter more than its happy path: with
 no release published it must stop with the manifest message rather than install
 half a binary, and a truncated download must fail the checksum.
 

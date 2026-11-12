@@ -1,48 +1,48 @@
 #!/bin/sh
-# Install the oxide-reins MCP server.
+# Install the oxide-computer-use MCP server.
 #
-#   curl -fsSL https://raw.githubusercontent.com/jaysonwu991/oxide-reins/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/jaysonwu991/oxide-computer-use/main/install.sh | sh
 #
 #   sh install.sh --check     # 0 when the installed copy is the latest release,
 #                             # 1 when an update is available, 2 when unknown
 #
 # Environment overrides:
-#   OXIDE_REINS_VERSION      version to install, with or without a leading "v"
+#   OXIDE_COMPUTER_USE_VERSION      version to install, with or without a leading "v"
 #                             (default: the latest release)
-#   OXIDE_REINS_INSTALL_DIR  directory to install the binary into
+#   OXIDE_COMPUTER_USE_INSTALL_DIR  directory to install the binary into
 #                             (default: $HOME/.local/bin)
-#   OXIDE_REINS_REPO         GitHub repository slug
-#                             (default: jaysonwu991/oxide-reins)
-#   OXIDE_REINS_RELEASES     base URL the manifest and archives come from
+#   OXIDE_COMPUTER_USE_REPO         GitHub repository slug
+#                             (default: jaysonwu991/oxide-computer-use)
+#   OXIDE_COMPUTER_USE_RELEASES     base URL the manifest and archives come from
 #                             (default: https://github.com/<repo>/releases)
 set -eu
 
-REPO="${OXIDE_REINS_REPO:-jaysonwu991/oxide-reins}"
-VERSION="${OXIDE_REINS_VERSION:-}"
-INSTALL_DIR="${OXIDE_REINS_INSTALL_DIR:-$HOME/.local/bin}"
-RELEASES="${OXIDE_REINS_RELEASES:-https://github.com/${REPO}/releases}"
-BINARY_NAME="oxide-reins"
-MANIFEST_NAME="oxide-reins-manifest"
+REPO="${OXIDE_COMPUTER_USE_REPO:-jaysonwu991/oxide-computer-use}"
+VERSION="${OXIDE_COMPUTER_USE_VERSION:-}"
+INSTALL_DIR="${OXIDE_COMPUTER_USE_INSTALL_DIR:-$HOME/.local/bin}"
+RELEASES="${OXIDE_COMPUTER_USE_RELEASES:-https://github.com/${REPO}/releases}"
+BINARY_NAME="oxide-computer-use"
+MANIFEST_NAME="oxide-computer-use-manifest"
 # A file beside the binary naming the install it came from, so a machine can
 # tell a released copy from one built in a checkout.
-MARKER_NAME=".oxide-reins-install"
+MARKER_NAME=".oxide-computer-use-install"
 
 err() {
-    printf 'oxide-reins-install: error: %s\n' "$*" >&2
+    printf 'oxide-computer-use-install: error: %s\n' "$*" >&2
     exit 1
 }
 
 refuse() {
-    printf 'oxide-reins-install: error: %s\n' "$*" >&2
+    printf 'oxide-computer-use-install: error: %s\n' "$*" >&2
     exit 2
 }
 
 warn() {
-    printf 'oxide-reins-install: warning: %s\n' "$*" >&2
+    printf 'oxide-computer-use-install: warning: %s\n' "$*" >&2
 }
 
 info() {
-    printf 'oxide-reins-install: %s\n' "$*" >&2
+    printf 'oxide-computer-use-install: %s\n' "$*" >&2
 }
 
 download() {
@@ -95,7 +95,7 @@ resolve_archive() {
     manifest_url="${RELEASES}/latest/download/${MANIFEST_NAME}"
     manifest="$(fetch "$manifest_url" 2>/dev/null)" || manifest=""
     if [ -z "$manifest" ]; then
-        err "no release manifest at ${manifest_url}; pass OXIDE_REINS_VERSION=v<version> to pin a release, or build from source"
+        err "no release manifest at ${manifest_url}; pass OXIDE_COMPUTER_USE_VERSION=v<version> to pin a release, or build from source"
     fi
 
     asset="$(printf '%s\n' "$manifest" |
@@ -148,10 +148,10 @@ check() {
         refuse "the release manifest names no version"
     fi
     if [ "$installed" = "$latest" ]; then
-        info "oxide-reins ${installed} is the latest release"
+        info "oxide-computer-use ${installed} is the latest release"
         return 0
     fi
-    info "oxide-reins ${installed} is installed; ${latest} is available"
+    info "oxide-computer-use ${installed} is installed; ${latest} is available"
     return 1
 }
 
@@ -233,7 +233,7 @@ main() {
         *":${INSTALL_DIR}:"*) ;;
         *)
             warn "${INSTALL_DIR} is not on your PATH"
-            printf 'oxide-reins-install: add it with: export PATH="%s:$PATH"\n' "$INSTALL_DIR" >&2
+            printf 'oxide-computer-use-install: add it with: export PATH="%s:$PATH"\n' "$INSTALL_DIR" >&2
             ;;
     esac
 

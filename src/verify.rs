@@ -104,7 +104,7 @@ fn granted(name: &'static str, ok: bool, detail: &str) -> Check {
     } else {
         Check::missing(
             name,
-            "not granted to the app that launched this server; grant it in System Settings → Privacy & Security, or run `oxide-reins doctor --prompt` there",
+            "not granted to the app that launched this server; grant it in System Settings → Privacy & Security, or run `oxide-computer-use doctor --prompt` there",
         )
     }
 }
@@ -242,7 +242,7 @@ fn native(runtime: &mut Runtime, app: Option<&str>, input: bool) -> Vec<Check> {
             runtime
                 .type_text(&json!({
                     "app": app_name,
-                    "text": "oxide-reins verify",
+                    "text": "oxide-computer-use verify",
                     "background": true
                 }))
                 .map(|reply| reply.replace('\n', " ")),

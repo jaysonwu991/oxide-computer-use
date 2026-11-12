@@ -1,13 +1,13 @@
 ---
-name: oxide-reins
-description: Drive this Mac's apps through the oxide-reins MCP server — list apps, read an accessibility tree, then click, type, select, scroll or drag. Use when a task needs a GUI app the agent cannot reach through files or a CLI.
+name: oxide-computer-use
+description: Drive this Mac's apps through the oxide-computer-use MCP server — list apps, read an accessibility tree, then click, type, select, scroll or drag. Use when a task needs a GUI app the agent cannot reach through files or a CLI.
 ---
 
 # Computer Use
 
-The `oxide-reins` MCP server exposes the desktop as tools. Look first and
+The `oxide-computer-use` MCP server exposes the desktop as tools. Look first and
 act on what you saw; acting moves the real pointer and keyboard.
-`oxide-reins install` registers the same server name for Oxide, Codex and
+`oxide-computer-use install` registers the same server name for Oxide, Codex and
 Claude Code, beside their built-in Computer Use servers.
 
 ## Loop
@@ -62,8 +62,8 @@ Claude Code, beside their built-in Computer Use servers.
 ## Failures worth reading
 
 - `` `X` is on the deny list ``, `` not on the allow list `` or `` is not
-  approved `` — the local app policy. `oxide-reins apps allow "X"` approves from
-  now on and `oxide-reins apps grant-once "X"` approves one call; a deny is
+  approved `` — the local app policy. `oxide-computer-use apps allow "X"` approves from
+  now on and `oxide-computer-use apps grant-once "X"` approves one call; a deny is
   lifted with `apps revoke "X"`. Do not work around it.
 - `was approved as … but this process is …` — the app's bundle identity changed
   since it was approved. Ask the user whether that is still the app they meant;
