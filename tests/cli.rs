@@ -566,7 +566,7 @@ fn the_terminal_rule_round_trips_through_the_cli() {
 
 #[test]
 fn a_key_spelling_is_checked_before_a_permission_is_asked_for() {
-    let (stdout, _, ok) = run(&["call", "press_key", "--args", "{\"key\":\"f13\"}"]);
+    let (stdout, _, ok) = run(&["call", "press_key", "--args", "{\"key\":\"NoSuchKeyName\"}"]);
     assert!(!ok, "a key that does not exist is refused");
     assert!(stdout.contains("unknown key"), "{stdout}");
     assert!(

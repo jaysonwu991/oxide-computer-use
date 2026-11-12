@@ -4,6 +4,7 @@ pub mod apps;
 pub mod ax;
 pub mod cf;
 pub mod input;
+pub mod instructions;
 pub mod pasteboard;
 pub mod screen;
 pub mod takeover;
@@ -11,7 +12,8 @@ pub mod tree;
 
 use anyhow::{anyhow, bail, Result};
 use serde_json::Value;
-use std::time::Duration;
+use std::collections::HashSet;
+use std::time::{Duration, Instant};
 
 use crate::policy::{self, Access, Policy};
 use crate::runtime::State;
@@ -20,6 +22,9 @@ use ax::{CFRange, CGPoint, Element};
 use tree::{Limits, Snapshot};
 
 const DEFAULT_MAX_OUTPUT_CHARS: usize = 20_000;
+const SETTLE_AFTER_ACTION: Duration = Duration::from_secs(1);
+const MAX_SETTLE_WAIT: Duration = Duration::from_secs(5);
+const SETTLE_POLL: Duration = Duration::from_millis(250);
 
 struct Cached {
     element: Element,
@@ -43,6 +48,8 @@ pub struct Runtime {
     cached_window: Option<String>,
     coordinate_window: Option<CoordinateWindow>,
     policy: Policy,
+    last_action: Option<Instant>,
+    delivered_instructions: HashSet<String>,
     /// The `.app` that launched this server, resolved once: it is the app a
     /// self-automation rule may refuse to drive.
     host: Option<String>,
@@ -56,6 +63,8 @@ impl Default for Runtime {
             cached_window: None,
             coordinate_window: None,
             policy: Policy::load(),
+            last_action: None,
+            delivered_instructions: HashSet::new(),
             host: crate::permissions::launching_app(),
         }
     }
@@ -331,6 +340,21 @@ fn render_diff(previous: &[Cached], current: &[tree::Node]) -> String {
     }
 }
 
+fn settle_wait(last_action: Option<Instant>, now: Instant) -> Duration {
+    last_action
+        .map(|action| SETTLE_AFTER_ACTION.saturating_sub(now.saturating_duration_since(action)))
+        .unwrap_or_default()
+}
+
+fn line_looks_loading(line: &str) -> bool {
+    let lower = line.to_lowercase();
+    lower.contains("axprogressindicator")
+        || lower.contains("· busy")
+        || lower.contains("value=\"loading")
+        || lower.contains("value=\"正在加载")
+        || lower.contains("value=\"载入中")
+}
+
 fn describe_windows(windows: &[Element]) -> String {
     let described: Vec<String> = windows
         .iter()
@@ -537,6 +561,50 @@ impl Runtime {
             .collect();
     }
 
+    fn mark_action(&mut self) {
+        self.last_action = Some(Instant::now());
+    }
+
+    fn snapshot_after_action(
+        &mut self,
+        app: &apps::App,
+        root: &Element,
+        limits: &Limits,
+        window: Option<&Element>,
+    ) -> Result<Snapshot> {
+        let action = self.last_action;
+        let wait = settle_wait(action, Instant::now());
+        if !wait.is_zero() {
+            std::thread::sleep(wait);
+        }
+        let deadline = action
+            .map(|started| started + MAX_SETTLE_WAIT)
+            .unwrap_or_else(|| Instant::now() + SETTLE_AFTER_ACTION);
+        let mut current = snapshot(app, root, limits, window)?;
+        while action.is_some()
+            && current
+                .nodes
+                .iter()
+                .any(|node| line_looks_loading(&node.text))
+            && Instant::now() < deadline
+        {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            std::thread::sleep(remaining.min(SETTLE_POLL));
+            current = snapshot(app, root, limits, window)?;
+        }
+        self.last_action = None;
+        Ok(current)
+    }
+
+    fn first_instructions(&mut self, app: &apps::App) -> Option<&'static str> {
+        let bundle_id = apps::identity(app.pid).map(|identity| identity.bundle_id);
+        let key = bundle_id.clone().unwrap_or_else(|| app.name.clone());
+        let instructions = instructions::for_app(bundle_id.as_deref(), &app.name)?;
+        self.delivered_instructions
+            .insert(key)
+            .then_some(instructions)
+    }
+
     fn element(&self, index: i64, app: Option<&str>) -> Result<&Cached> {
         let Some(cached) = &self.cached_app else {
             bail!("no snapshot yet; call get_app_state before using element_index");
@@ -648,7 +716,7 @@ impl Runtime {
         }
         limits.include_frames = bool_arg(args, "include_frames");
 
-        let snapshot = snapshot(&app, root, &limits, scoped.as_ref())?;
+        let snapshot = self.snapshot_after_action(&app, root, &limits, scoped.as_ref())?;
         let window_label = scoped
             .as_ref()
             .and_then(|window| window.string_attribute("AXTitle"))
@@ -666,6 +734,14 @@ impl Runtime {
         let truncated = snapshot.truncated;
         let count = snapshot.nodes.len();
         self.store(&app, window_label, snapshot);
+        let guidance = self
+            .first_instructions(&app)
+            .map(|instructions| {
+                format!(
+                    "<app_specific_instructions>\n{instructions}\n</app_specific_instructions>\n\n"
+                )
+            })
+            .unwrap_or_default();
 
         let mut header = format!("App: {} (pid {})", app.name, app.pid);
         if let Some(window) = &scoped {
@@ -708,7 +784,7 @@ impl Runtime {
         }
 
         let limit = usize_arg(args, "max_output_chars").unwrap_or(DEFAULT_MAX_OUTPUT_CHARS);
-        let mut text = cap_output(format!("{header}\n\n{body}"), limit);
+        let mut text = cap_output(format!("{guidance}{header}\n\n{body}"), limit);
 
         let title = scoped
             .as_ref()
@@ -900,10 +976,12 @@ impl Runtime {
             let cached = self.checked_element(index, Some(&app.name))?;
             let element = &cached.element;
             if plain_click && element.has_action("AXPress") {
+                let role = cached.role.clone();
                 element.perform("AXPress")?;
+                self.mark_action();
                 return Ok(format!(
                     "Clicked element {index} ({}) with AXPress; it never needed the pointer.",
-                    cached.role
+                    role
                 ));
             }
             let center = cached.center.ok_or_else(|| {
@@ -912,6 +990,7 @@ impl Runtime {
             let role = cached.role.clone();
             Self::app_element(&app)?.activate_app()?;
             input::click_with(center, button, click_count, hold, key_flags)?;
+            self.mark_action();
             return Ok(format!(
                 "Clicked element {index} ({role}) at ({:.0},{:.0}) with {} button click{} and a pointer event; the app is now frontmost.",
                 center.x,
@@ -928,6 +1007,7 @@ impl Runtime {
         let point = self.point_in_window(&app, x, y)?;
         Self::app_element(&app)?.activate_app()?;
         input::click_with(point, button, click_count, hold, key_flags)?;
+        self.mark_action();
         Ok(format!(
             "Clicked app-window coordinate ({x:.0},{y:.0}) with {} button click{} and a pointer event; the app is now frontmost.",
             button_name(&button),
@@ -956,10 +1036,9 @@ impl Runtime {
             );
         }
         cached.element.perform(&action)?;
-        Ok(format!(
-            "Performed {action} on element {index} ({}).",
-            cached.role
-        ))
+        let role = cached.role.clone();
+        self.mark_action();
+        Ok(format!("Performed {action} on element {index} ({}).", role))
     }
 
     pub fn set_value(&mut self, args: &Value) -> Result<String> {
@@ -986,6 +1065,7 @@ impl Runtime {
                 "element {index} still reads {read_back:?} after writing {value:?}; the control ignored the write, so nothing was changed"
             );
         }
+        self.mark_action();
         Ok(format!(
             "Set element {index} value and read {value:?} back."
         ))
@@ -1051,6 +1131,7 @@ impl Runtime {
                 bail!("the element selected {selected:?} instead of {needle:?}");
             }
         }
+        self.mark_action();
         Ok(format!(
             "Selected {} characters at {} ({needle:?}) with {selection_type}.",
             found.length, found.location
@@ -1090,6 +1171,7 @@ impl Runtime {
             Some(app) => input::type_text_in(app.pid, text)?,
             None => input::type_text(text)?,
         };
+        self.mark_action();
         let mut reply = describe_typing(&typed, text);
         if let Some(app) = &target {
             reply.push_str(&format!(
@@ -1128,6 +1210,7 @@ impl Runtime {
             Some(app) => input::press_in_for(app.pid, &key, &modifiers, duration)?,
             None => input::press_for(&key, &modifiers, duration)?,
         };
+        self.mark_action();
         let spelling = match key.rsplit_once('+') {
             Some((_, rest)) if !rest.is_empty() => rest.trim(),
             _ => key.trim(),
@@ -1188,6 +1271,7 @@ impl Runtime {
             Self::app_element(app)?.activate_app()?;
         }
         input::scroll(point, horizontal, vertical)?;
+        self.mark_action();
         Ok(format!("Scrolled {direction} {pages} page(s)."))
     }
 
@@ -1228,6 +1312,7 @@ impl Runtime {
             Self::app_element(app)?.activate_app()?;
         }
         input::drag(start, end)?;
+        self.mark_action();
         Ok(format!(
             "Dragged from ({:.0},{:.0}) to ({:.0},{:.0}).",
             start.x, start.y, end.x, end.y
@@ -1252,6 +1337,7 @@ impl Runtime {
             std::thread::sleep(Duration::from_millis(200));
             Ok(())
         })?;
+        self.mark_action();
         Ok(format!(
             "Pasted {} characters as {format} into {} and restored the previous clipboard contents.",
             text.chars().count(),
@@ -1404,6 +1490,26 @@ mod tests {
         assert!(capped.starts_with(&"x".repeat(10)));
         assert!(capped.contains("truncated at 10 of 50 characters"));
         assert_eq!(cap_output(text.clone(), 100), text);
+    }
+
+    #[test]
+    fn an_action_reserves_a_one_second_settling_window() {
+        let action = Instant::now();
+        let wait = settle_wait(Some(action), action + Duration::from_millis(250));
+        assert_eq!(wait, Duration::from_millis(750));
+        assert_eq!(
+            settle_wait(Some(action), action + Duration::from_secs(2)),
+            Duration::ZERO
+        );
+        assert_eq!(settle_wait(None, action), Duration::ZERO);
+    }
+
+    #[test]
+    fn loading_markers_trigger_bounded_settling() {
+        assert!(line_looks_loading("AXProgressIndicator value=42"));
+        assert!(line_looks_loading("AXButton \"Loading\" · busy"));
+        assert!(line_looks_loading("AXStaticText value=\"Loading…\""));
+        assert!(!line_looks_loading("AXButton \"Load file\""));
     }
 
     #[test]

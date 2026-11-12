@@ -155,6 +155,12 @@ added and removed element lines, with current indexes. A read that the app does
 not answer fails as an error within a two-second bound per message, instead of
 returning an empty or half-read tree that looks like a real answer.
 
+After an action, `get_app_state` waits about one second before reading. If the
+new tree still exposes a busy/progress indicator, it retries in 250 ms steps up
+to a five-second bound. For selected common apps, the first successful read also
+prepends an independently authored `<app_specific_instructions>` block; the
+guidance is delivered once per app bundle in that runtime process.
+
 | Parameter | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `app` | string | required | See resolution above. |
@@ -348,14 +354,15 @@ that the rest was not sent.
 | `app` | string | required | App to activate first, or the app a background press is addressed to. |
 | `background` | boolean | `false` | Deliver to that app's process only, without activating it. |
 
-Key names: `Return`, `Enter`, `Tab`, `Space`, `Delete`/`Backspace`,
-`Forward_Delete`, `Escape`, `Home`, `End`, `Page_Up`, `Page_Down`, `Left`,
-`Right`, `Up`, `Down`, `F1`–`F12`, or any single character that maps to a US
-keyboard key. `Super_L`, `Control_L`, `Alt_L` and `Shift_L` are accepted in
-chords, whitespace around `+` is ignored, and `KP_0`–`KP_9` cover the keypad. The
-spellings `\n`, `\r`, `newline`, `linefeed`/`lf` and `cr` press `Return`; `\t`
-presses `Tab`. Modifier flags are set on both the press and release. The key is
-resolved before the app is activated or a permission is asked for.
+Key names include `Return`, `Tab`, `Space`, `Backspace`, `Forward_Delete`,
+navigation keys, `F1`–`F20`, keypad keys such as `KP_Enter`, modifier keys and
+their `_L`/`_R` variants, punctuation names, or any single character that maps to
+a US keyboard key. X Window aliases such as `Prior` and `Next` are accepted,
+whitespace around `+` is ignored, and unknown modifier tokens are refused instead
+of silently dropped. The spellings `\n`, `\r`, `newline`, `linefeed`/`lf` and
+`cr` press `Return`; `\t` presses `Tab`. Modifier flags are set on both the press
+and release. The key is resolved before the app is activated or a permission is
+asked for.
 
 ### Background input
 

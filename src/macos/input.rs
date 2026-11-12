@@ -284,6 +284,7 @@ fn modifier_flag(part: &str) -> Option<u64> {
     }
 }
 
+#[cfg(test)]
 fn modifiers(spec: &str) -> u64 {
     let mut flags = 0;
     for part in spec.split(['+', ',', ' ']) {
@@ -292,6 +293,21 @@ fn modifiers(spec: &str) -> u64 {
         }
     }
     flags
+}
+
+fn modifiers_checked(spec: &str) -> Result<u64> {
+    let mut flags = 0;
+    for part in spec.split(['+', ',', ' ']) {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let flag = modifier_flag(part).ok_or_else(|| {
+            anyhow::anyhow!("unknown modifier `{part}`; use cmd, shift, alt or ctrl")
+        })?;
+        flags |= flag;
+    }
+    Ok(flags)
 }
 
 /// Validate a chord used as held input during a pointer action. The pointer
@@ -321,24 +337,54 @@ struct Key {
     name: String,
 }
 
-const NAMED: [(&str, u16, &str); 50] = [
+const NAMED: &[(&str, u16, &str)] = &[
     ("return", 36, "Return"),
     ("enter", 36, "Return"),
     ("tab", 48, "Tab"),
+    ("iso_left_tab", 48, "Tab"),
     ("space", 49, "Space"),
     (" ", 49, "Space"),
     ("delete", 51, "Delete"),
     ("backspace", 51, "Delete"),
+    ("back_space", 51, "Delete"),
     ("escape", 53, "Escape"),
     ("esc", 53, "Escape"),
+    ("command", 55, "Command"),
+    ("cmd", 55, "Command"),
+    ("meta", 55, "Command"),
+    ("super", 55, "Super"),
+    ("command_l", 55, "Command"),
+    ("super_l", 55, "Super_L"),
+    ("shift", 56, "Shift"),
+    ("shift_l", 56, "Shift_L"),
+    ("caps_lock", 57, "Caps_Lock"),
+    ("option", 58, "Option"),
+    ("opt", 58, "Option"),
+    ("alt", 58, "Option"),
+    ("option_l", 58, "Option_L"),
+    ("alt_l", 58, "Alt_L"),
+    ("control", 59, "Control"),
+    ("control_l", 59, "Control_L"),
+    ("ctrl", 59, "Control"),
+    ("command_r", 54, "Command_R"),
+    ("super_r", 54, "Super_R"),
+    ("shift_r", 60, "Shift_R"),
+    ("option_r", 61, "Option_R"),
+    ("alt_r", 61, "Alt_R"),
+    ("control_r", 62, "Control_R"),
+    ("fn", 63, "Function"),
     ("forward_delete", 117, "Forward_Delete"),
     ("forwarddelete", 117, "Forward_Delete"),
+    ("insert", 114, "Insert"),
+    ("help", 114, "Help"),
     ("home", 115, "Home"),
     ("end", 119, "End"),
     ("page_up", 116, "Page_Up"),
     ("pageup", 116, "Page_Up"),
+    ("prior", 116, "Page_Up"),
     ("page_down", 121, "Page_Down"),
     ("pagedown", 121, "Page_Down"),
+    ("next", 121, "Page_Down"),
     ("left", 123, "Left"),
     ("arrow_left", 123, "Left"),
     ("left_arrow", 123, "Left"),
@@ -362,6 +408,23 @@ const NAMED: [(&str, u16, &str); 50] = [
     ("f9", 101, "F9"),
     ("f10", 109, "F10"),
     ("f11", 103, "F11"),
+    ("f12", 111, "F12"),
+    ("f13", 105, "F13"),
+    ("f14", 107, "F14"),
+    ("f15", 113, "F15"),
+    ("f16", 106, "F16"),
+    ("f17", 64, "F17"),
+    ("f18", 79, "F18"),
+    ("f19", 80, "F19"),
+    ("f20", 90, "F20"),
+    ("kp_decimal", 65, "KP_Decimal"),
+    ("kp_multiply", 67, "KP_Multiply"),
+    ("kp_add", 69, "KP_Add"),
+    ("kp_clear", 71, "KP_Clear"),
+    ("kp_divide", 75, "KP_Divide"),
+    ("kp_enter", 76, "KP_Enter"),
+    ("kp_subtract", 78, "KP_Subtract"),
+    ("kp_equal", 81, "KP_Equal"),
     ("kp_0", 82, "KP_0"),
     ("kp_1", 83, "KP_1"),
     ("kp_2", 84, "KP_2"),
@@ -372,6 +435,18 @@ const NAMED: [(&str, u16, &str); 50] = [
     ("kp_7", 89, "KP_7"),
     ("kp_8", 91, "KP_8"),
     ("kp_9", 92, "KP_9"),
+    ("semicolon", 41, "semicolon"),
+    ("apostrophe", 39, "apostrophe"),
+    ("quote", 39, "apostrophe"),
+    ("comma", 43, "comma"),
+    ("minus", 27, "minus"),
+    ("period", 47, "period"),
+    ("slash", 44, "slash"),
+    ("equal", 24, "equal"),
+    ("bracketleft", 33, "bracketleft"),
+    ("bracketright", 30, "bracketright"),
+    ("backslash", 42, "backslash"),
+    ("grave", 50, "grave"),
 ];
 
 /// Spelling a key as an escape is common enough in a model's tool call that the
@@ -396,12 +471,6 @@ fn escaped(spec: &str) -> Option<Key> {
 
 fn key(spec: &str) -> Option<Key> {
     let lower = spec.to_lowercase();
-    if lower.trim() == "f12" {
-        return Some(Key {
-            code: 111,
-            name: "F12".to_string(),
-        });
-    }
     if let Some((_, code, name)) = NAMED.iter().find(|(name, _, _)| *name == lower.trim()) {
         return Some(Key {
             code: *code,
@@ -486,7 +555,11 @@ fn parse(spec: &str, modifier_spec: &str) -> Result<(Key, u64)> {
         _ => (modifier_spec, spec),
     };
     let key = key(key_part).ok_or_else(|| unknown_key(key_part))?;
-    Ok((key, modifiers(modifier_part)))
+    let mut flags = modifiers_checked(modifier_part)?;
+    if let Some(flag) = modifier_flag(key_part) {
+        flags |= flag;
+    }
+    Ok((key, flags))
 }
 
 /// Resolve a key spelling without posting anything, so a malformed key is
@@ -691,6 +764,23 @@ mod tests {
     fn keypad_keys_are_available() {
         assert_eq!(code("KP_0"), Some(82));
         assert_eq!(code("kp_9"), Some(92));
+        assert_eq!(code("KP_Enter"), Some(76));
+    }
+
+    #[test]
+    fn xdotool_named_keys_and_modifier_keys_are_available() {
+        assert_eq!(code("Shift_L"), Some(56));
+        assert_eq!(code("Control_R"), Some(62));
+        assert_eq!(code("Prior"), Some(116));
+        assert_eq!(code("Next"), Some(121));
+        assert_eq!(code("semicolon"), Some(41));
+        assert_eq!(code("BracketLeft"), Some(33));
+        assert_eq!(parse("Shift_L", "").unwrap().1, FLAG_SHIFT);
+    }
+
+    #[test]
+    fn unknown_modifier_tokens_are_refused_in_a_chord() {
+        assert!(parse("not_a_modifier+a", "").is_err());
     }
 
     #[test]
