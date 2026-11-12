@@ -127,8 +127,12 @@ fn describe_typing(typed: &input::Typed, text: &str) -> String {
 }
 
 fn required_app(args: &Value) -> Result<String> {
-    string_arg(args, "app")
+    optional_app(args)
         .ok_or_else(|| anyhow!("`app` is required; call list_apps to see the running apps"))
+}
+
+fn optional_app(args: &Value) -> Option<String> {
+    string_arg(args, "app").map(|app| app.trim().trim_start_matches('@').trim().to_string())
 }
 
 fn number_arg(args: &Value, key: &str) -> Option<f64> {
@@ -1145,7 +1149,7 @@ impl Runtime {
             .ok_or_else(|| anyhow!("`text` is required"))?;
         let background = bool_arg(args, "background");
         let mut target: Option<apps::App> = None;
-        match string_arg(args, "app") {
+        match optional_app(args) {
             Some(name) => {
                 let app = self.resolved(&name)?;
                 self.guard()?;
@@ -1189,7 +1193,7 @@ impl Runtime {
         let duration = duration_arg(args, "duration")?.unwrap_or(Duration::ZERO);
         let background = bool_arg(args, "background");
         let mut target: Option<apps::App> = None;
-        match string_arg(args, "app") {
+        match optional_app(args) {
             Some(name) => {
                 let app = self.resolved(&name)?;
                 self.guard()?;
@@ -1237,7 +1241,7 @@ impl Runtime {
         if !pages.is_finite() || pages <= 0.0 {
             bail!("`pages` must be a finite number > 0");
         }
-        let target_app = match string_arg(args, "app") {
+        let target_app = match optional_app(args) {
             Some(name) => Some(self.resolved(&name)?),
             None => None,
         };
@@ -1276,7 +1280,7 @@ impl Runtime {
     }
 
     pub fn drag(&mut self, args: &Value) -> Result<String> {
-        let target_app = match string_arg(args, "app") {
+        let target_app = match optional_app(args) {
             Some(name) => Some(self.resolved(&name)?),
             None => None,
         };
@@ -1346,7 +1350,7 @@ impl Runtime {
     }
 
     pub fn screenshot(&self, args: &Value) -> Result<Vec<u8>> {
-        match string_arg(args, "app") {
+        match optional_app(args) {
             Some(name) => {
                 let app = self.resolved(&name)?;
                 self.capture_window(&app, string_arg(args, "window").as_deref())
@@ -1519,5 +1523,17 @@ mod tests {
         assert_eq!(number_arg(&args, "y"), Some(3.0));
         assert!(bool_arg(&args, "flag"));
         assert_eq!(usize_arg(&args, "y"), Some(3));
+    }
+
+    #[test]
+    fn app_mentions_are_accepted_as_identifiers() {
+        assert_eq!(
+            optional_app(&json!({ "app": " @Google Chrome " })),
+            Some("Google Chrome".to_string())
+        );
+        assert_eq!(
+            optional_app(&json!({ "app": "@com.apple.TextEdit" })),
+            Some("com.apple.TextEdit".to_string())
+        );
     }
 }

@@ -17,6 +17,9 @@ once in `src/tools.rs`; this page explains what each one does with them.
 3. a case-insensitive substring of a discoverable app name or bundle identifier,
    first match wins.
 
+A leading `@`, as in an `@Chrome` client mention, is accepted and removed before
+resolution.
+
 Resolution searches every window owner, including the window-server helpers
 that `list_apps` hides — so a native file picker announced as
 `Open and Save Panel Service` can be driven by pid even when it is not listed.

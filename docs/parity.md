@@ -200,7 +200,7 @@ matched operation for operation:
 
 - `list_apps` discovers installed applications as well as running bundles and
   returns `id`, `displayName`, `isRunning` and path. `app` accepts a bundle id,
-  display/process name, application path or pid.
+  display/process name, application path, pid or client-style `@App` mention.
 - `get_app_state` launches a discoverable app when necessary, waits for its
   window, returns an accessibility diff after the first view unless `disableDiff`
   is set, and attaches the app-window screenshot by default.
