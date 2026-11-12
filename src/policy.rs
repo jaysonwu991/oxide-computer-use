@@ -135,10 +135,10 @@ struct Rules {
 }
 
 impl Rules {
-    fn identity(&self, app: &str) -> Option<&Identity> {
+    fn identity(&self, app: &str, live: Option<&Identity>) -> Option<&Identity> {
         self.identities
             .iter()
-            .find(|(name, _)| same(name, app))
+            .find(|(name, _)| matches(name, app, live))
             .map(|(_, identity)| identity)
     }
 
@@ -182,6 +182,12 @@ fn path_from(home: Option<&Path>) -> Option<PathBuf> {
 
 fn same(rule: &str, app: &str) -> bool {
     rule.trim().eq_ignore_ascii_case(app.trim())
+}
+
+fn matches(rule: &str, app: &str, identity: Option<&Identity>) -> bool {
+    same(rule, app)
+        || identity
+            .is_some_and(|identity| same(rule, &identity.bundle_id) || same(rule, &identity.path))
 }
 
 fn cleaned(app: &str) -> Result<&str> {
@@ -396,21 +402,29 @@ impl Policy {
     pub fn needs_identity(&self, app: &str) -> bool {
         let rules = self.rules.borrow();
         rules.identities.keys().any(|name| same(name, app))
+            || rules.one_time.as_ref().is_some_and(|grant| {
+                same(&grant.app, app) || grant.app.contains('.') || grant.app.contains('/')
+            })
             || rules
-                .one_time
-                .as_ref()
-                .is_some_and(|grant| same(&grant.app, app))
+                .allowed
+                .iter()
+                .chain(rules.denied.iter())
+                .any(|rule| rule.contains('.') || rule.contains('/'))
     }
 
     pub fn access(&self, app: &str, identity: Option<&Identity>) -> Access {
         let rules = self.rules.borrow();
-        if rules.denied.iter().any(|rule| same(rule, app)) {
+        if rules.denied.iter().any(|rule| matches(rule, app, identity)) {
             return Access::Blocked(format!(
                 "`{app}` is on the deny list; lift it with `oxide-reins apps revoke \"{app}\"` if that is not what you want"
             ));
         }
-        if rules.allowed.iter().any(|rule| same(rule, app)) {
-            let Some(recorded) = rules.identity(app) else {
+        if rules
+            .allowed
+            .iter()
+            .any(|rule| matches(rule, app, identity))
+        {
+            let Some(recorded) = rules.identity(app, identity) else {
                 return Access::Allowed;
             };
             return match identity {
@@ -426,7 +440,7 @@ impl Policy {
             };
         }
         if let Some(grant) = &rules.one_time {
-            if same(&grant.app, app) {
+            if matches(&grant.app, app, identity) {
                 return match (&grant.identity, identity) {
                     (Some(recorded), Some(live)) if recorded.bundle_id != live.bundle_id => {
                         Access::Blocked(format!(
@@ -444,6 +458,14 @@ impl Policy {
                 "`{app}` is not approved. Approve one call with `oxide-reins apps grant-once \"{app}\"`, or every call from now on with `oxide-reins apps allow \"{app}\"`"
             )),
         }
+    }
+
+    /// Check a decision without spending a one-time approval. The launch path
+    /// uses this before starting an app, then performs the normal spending
+    /// authorization after the process and its window exist.
+    pub fn check(&self, app: &str, identity: Option<&Identity>) -> Result<Access> {
+        self.refresh()?;
+        Ok(self.access(app, identity))
     }
 
     /// The one gate every tool goes through, after `app` has been resolved.
@@ -632,7 +654,7 @@ impl Policy {
         };
         let describe = |apps: &[String]| -> String {
             apps.iter()
-                .map(|app| match rules.identity(app) {
+                .map(|app| match rules.identity(app, None) {
                     Some(identity) => format!("{app} ({})", identity.bundle_id),
                     None => app.clone(),
                 })
@@ -763,6 +785,31 @@ mod tests {
             panic!("an unreadable identity has to be refused too");
         };
         assert!(message.contains("bundle identifier"), "{message}");
+    }
+
+    #[test]
+    fn policy_rules_match_bundle_ids_and_paths_as_well_as_names() {
+        let path = scratch("identity-address");
+        let policy = policy_with(
+            &path,
+            Rules {
+                allowed: vec!["com.apple.finder".into()],
+                ..Rules::default()
+            },
+        );
+        assert!(policy.access("Finder", Some(&finder())).is_allowed());
+
+        let policy = policy_with(
+            &path,
+            Rules {
+                denied: vec!["/System/Library/CoreServices/Finder.app".into()],
+                ..Rules::default()
+            },
+        );
+        let Access::Blocked(message) = policy.access("Finder", Some(&finder())) else {
+            panic!("a path rule has to match the running bundle path");
+        };
+        assert!(message.contains("deny list"), "{message}");
     }
 
     #[test]

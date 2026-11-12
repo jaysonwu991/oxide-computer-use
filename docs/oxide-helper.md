@@ -26,13 +26,13 @@ copies the supplied runtime into the app and signs both; default signing is
 ad-hoc for development. `--identity` selects a Developer ID identity, but does
 not notarize or publish an installer. The helper supports macOS 14+; the supplied
 runtime can impose a higher minimum. Other OS/CPU versions need validation. The
-app's inner proxy keeps the name Oxide's build script gives it
-(`oxide-computer-use`); that name is not this repository's binary name.
+app's inner proxy and this repository's binary both use the name
+`oxide-reins`.
 
 Move the app to its intended stable location, then register its proxy:
 
 ```sh
-oxide mcp add oxide-reins "/absolute/path/Oxide Computer Use.app/Contents/MacOS/oxide-computer-use" --mcp
+oxide mcp add oxide-reins "/absolute/path/Oxide Computer Use.app/Contents/MacOS/oxide-reins" --mcp
 ```
 
 Review the existing entry before replacing it; use a separate `oxide-reins-*`

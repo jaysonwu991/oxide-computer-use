@@ -49,10 +49,12 @@ const RIGHT_MOUSE_DOWN: u32 = 3;
 const RIGHT_MOUSE_UP: u32 = 4;
 const MOUSE_MOVED: u32 = 5;
 const LEFT_MOUSE_DRAGGED: u32 = 6;
+const OTHER_MOUSE_DOWN: u32 = 25;
+const OTHER_MOUSE_UP: u32 = 26;
 
 use std::time::Duration;
 
-const SCROLL_UNIT_LINE: u32 = 1;
+const SCROLL_UNIT_PIXEL: u32 = 0;
 const MOUSE_EVENT_CLICK_STATE: u32 = 1;
 
 const FLAG_SHIFT: u64 = 0x0002_0000;
@@ -109,30 +111,69 @@ fn post(raw: CFTypeRef) -> Result<()> {
     Ok(())
 }
 
-pub fn click(point: CGPoint, button: Button) -> Result<()> {
-    let (down, up, index) = match button {
-        Button::Left => (LEFT_MOUSE_DOWN, LEFT_MOUSE_UP, 0),
-        Button::Right => (RIGHT_MOUSE_DOWN, RIGHT_MOUSE_UP, 1),
-    };
+fn mouse_event(source: &Source, kind: u32, point: CGPoint, index: u32) -> Event {
+    unsafe { Event(CGEventCreateMouseEvent(source.raw(), kind, point, index)) }
+}
+
+/// A click sequence with the options Computer Use exposes: repeated click
+/// count, a held mouse button, and modifier flags held across the sequence.
+pub fn click_with(
+    point: CGPoint,
+    button: Button,
+    click_count: usize,
+    duration: Duration,
+    flags: u64,
+) -> Result<()> {
+    let (down, up, index) = button.events();
     let source = Source::hid();
     unsafe {
-        post(CGEventCreateMouseEvent(source.raw(), MOUSE_MOVED, point, 0))?;
-        pace(UI_SETTLED);
-        let down_event = Event(CGEventCreateMouseEvent(source.raw(), down, point, index));
-        if down_event.0.is_null() {
+        let moved = mouse_event(&source, MOUSE_MOVED, point, 0);
+        if moved.0.is_null() {
             bail!("the window server refused to create the mouse event");
         }
-        CGEventSetIntegerValueField(down_event.0, MOUSE_EVENT_CLICK_STATE, 1);
-        CGEventPost(HID_EVENT_TAP, down_event.0);
+        if flags != 0 {
+            CGEventSetFlags(moved.0, flags);
+        }
+        CGEventPost(HID_EVENT_TAP, moved.0);
         pace(UI_SETTLED);
-        post(CGEventCreateMouseEvent(source.raw(), up, point, index))?;
+        for count in 1..=click_count {
+            let down_event = mouse_event(&source, down, point, index);
+            let up_event = mouse_event(&source, up, point, index);
+            if down_event.0.is_null() || up_event.0.is_null() {
+                bail!("the window server refused to create the mouse event");
+            }
+            if flags != 0 {
+                CGEventSetFlags(down_event.0, flags);
+                CGEventSetFlags(up_event.0, flags);
+            }
+            CGEventSetIntegerValueField(down_event.0, MOUSE_EVENT_CLICK_STATE, count as i64);
+            CGEventSetIntegerValueField(up_event.0, MOUSE_EVENT_CLICK_STATE, count as i64);
+            CGEventPost(HID_EVENT_TAP, down_event.0);
+            pace(duration);
+            CGEventPost(HID_EVENT_TAP, up_event.0);
+            if count < click_count {
+                pace(UI_SETTLED);
+            }
+        }
     }
     Ok(())
 }
 
+#[derive(Clone, Copy)]
 pub enum Button {
     Left,
     Right,
+    Middle,
+}
+
+impl Button {
+    fn events(self) -> (u32, u32, u32) {
+        match self {
+            Button::Left => (LEFT_MOUSE_DOWN, LEFT_MOUSE_UP, 0),
+            Button::Right => (RIGHT_MOUSE_DOWN, RIGHT_MOUSE_UP, 1),
+            Button::Middle => (OTHER_MOUSE_DOWN, OTHER_MOUSE_UP, 2),
+        }
+    }
 }
 
 /// A drag that a window manager and a text view both accept: the pointer
@@ -206,10 +247,16 @@ pub fn drag(from: CGPoint, to: CGPoint) -> Result<()> {
     Ok(())
 }
 
-pub fn scroll(point: Option<CGPoint>, lines: i32) -> Result<()> {
+pub fn scroll(point: Option<CGPoint>, horizontal: i32, vertical: i32) -> Result<()> {
     unsafe {
-        let event =
-            CGEventCreateScrollWheelEvent2(std::ptr::null(), SCROLL_UNIT_LINE, 1, lines, 0, 0);
+        let event = CGEventCreateScrollWheelEvent2(
+            std::ptr::null(),
+            SCROLL_UNIT_PIXEL,
+            2,
+            vertical,
+            horizontal,
+            0,
+        );
         let event = Event(event);
         if event.0.is_null() {
             bail!("the window server refused to create the scroll event");
@@ -222,18 +269,49 @@ pub fn scroll(point: Option<CGPoint>, lines: i32) -> Result<()> {
     Ok(())
 }
 
+fn modifier_flag(part: &str) -> Option<u64> {
+    let normalized = part.trim().to_lowercase();
+    let part = normalized
+        .strip_suffix("_l")
+        .or_else(|| normalized.strip_suffix("_r"))
+        .unwrap_or(&normalized);
+    match part {
+        "cmd" | "command" | "meta" | "super" => Some(FLAG_COMMAND),
+        "shift" => Some(FLAG_SHIFT),
+        "alt" | "opt" | "option" => Some(FLAG_OPTION),
+        "ctrl" | "control" => Some(FLAG_CONTROL),
+        _ => None,
+    }
+}
+
 fn modifiers(spec: &str) -> u64 {
     let mut flags = 0;
     for part in spec.split(['+', ',', ' ']) {
-        match part.trim().to_lowercase().as_str() {
-            "cmd" | "command" | "meta" => flags |= FLAG_COMMAND,
-            "shift" => flags |= FLAG_SHIFT,
-            "alt" | "opt" | "option" => flags |= FLAG_OPTION,
-            "ctrl" | "control" => flags |= FLAG_CONTROL,
-            _ => {}
+        if let Some(flag) = modifier_flag(part) {
+            flags |= flag;
         }
     }
     flags
+}
+
+/// Validate a chord used as held input during a pointer action. The pointer
+/// API takes modifiers rather than printable keys, so an unsupported token is
+/// refused instead of silently omitted.
+pub fn click_flags(spec: &str) -> Result<u64> {
+    let mut flags = 0;
+    for part in spec.split('+') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let flag = modifier_flag(part).ok_or_else(|| {
+            anyhow::anyhow!(
+                "unknown click key `{part}`; use a modifier chord such as Shift, Super, Control_L, or Super+Shift"
+            )
+        })?;
+        flags |= flag;
+    }
+    Ok(flags)
 }
 
 /// A key name and the character a person would read for it, so a reply can say
@@ -243,7 +321,7 @@ struct Key {
     name: String,
 }
 
-const NAMED: [(&str, u16, &str); 40] = [
+const NAMED: [(&str, u16, &str); 50] = [
     ("return", 36, "Return"),
     ("enter", 36, "Return"),
     ("tab", 48, "Tab"),
@@ -284,6 +362,16 @@ const NAMED: [(&str, u16, &str); 40] = [
     ("f9", 101, "F9"),
     ("f10", 109, "F10"),
     ("f11", 103, "F11"),
+    ("kp_0", 82, "KP_0"),
+    ("kp_1", 83, "KP_1"),
+    ("kp_2", 84, "KP_2"),
+    ("kp_3", 85, "KP_3"),
+    ("kp_4", 86, "KP_4"),
+    ("kp_5", 87, "KP_5"),
+    ("kp_6", 88, "KP_6"),
+    ("kp_7", 89, "KP_7"),
+    ("kp_8", 91, "KP_8"),
+    ("kp_9", 92, "KP_9"),
 ];
 
 /// Spelling a key as an escape is common enough in a model's tool call that the
@@ -424,7 +512,12 @@ fn deliver(target: Target, event: CGEventRef) {
     }
 }
 
-fn press_with(target: Target, key_spec: &str, modifier_spec: &str) -> Result<String> {
+fn press_with(
+    target: Target,
+    key_spec: &str,
+    modifier_spec: &str,
+    duration: Duration,
+) -> Result<String> {
     let (key, flags) = parse(key_spec, modifier_spec)?;
     unsafe {
         let down = Event(CGEventCreateKeyboardEvent(std::ptr::null(), key.code, true));
@@ -441,6 +534,7 @@ fn press_with(target: Target, key_spec: &str, modifier_spec: &str) -> Result<Str
             CGEventSetFlags(up.0, flags);
         }
         deliver(target, down.0);
+        pace(duration);
         deliver(target, up.0);
     }
     Ok(key.name)
@@ -449,11 +543,20 @@ fn press_with(target: Target, key_spec: &str, modifier_spec: &str) -> Result<Str
 /// Press one key on the real desktop and report the name of the key that was
 /// pressed.
 pub fn press(key_spec: &str, modifier_spec: &str) -> Result<String> {
-    press_with(Target::Desktop, key_spec, modifier_spec)
+    press_with(Target::Desktop, key_spec, modifier_spec, Duration::ZERO)
 }
 
-pub fn press_in(pid: i32, key_spec: &str, modifier_spec: &str) -> Result<String> {
-    press_with(Target::Process(pid), key_spec, modifier_spec)
+pub fn press_for(key_spec: &str, modifier_spec: &str, duration: Duration) -> Result<String> {
+    press_with(Target::Desktop, key_spec, modifier_spec, duration)
+}
+
+pub fn press_in_for(
+    pid: i32,
+    key_spec: &str,
+    modifier_spec: &str,
+    duration: Duration,
+) -> Result<String> {
+    press_with(Target::Process(pid), key_spec, modifier_spec, duration)
 }
 
 fn type_units(target: Target, text: &str) -> Result<()> {
@@ -506,7 +609,7 @@ fn type_with(target: Target, text: &str) -> Result<Typed> {
     };
     for (index, segment) in text.split('\n').enumerate() {
         if index > 0 {
-            press_with(target, "Return", "")?;
+            press_with(target, "Return", "", Duration::ZERO)?;
             typed.line_breaks += 1;
             if let Some(kind) = watch.as_ref().and_then(Takeover::poll) {
                 typed.takeover = Some(kind);
@@ -569,7 +672,25 @@ mod tests {
         assert_eq!(modifiers("shift+cmd"), FLAG_COMMAND | FLAG_SHIFT);
         assert_eq!(modifiers("alt"), FLAG_OPTION);
         assert_eq!(modifiers("control"), FLAG_CONTROL);
+        assert_eq!(modifiers("Super_L"), FLAG_COMMAND);
+        assert_eq!(modifiers("Control_L+Shift_R"), FLAG_CONTROL | FLAG_SHIFT);
         assert_eq!(modifiers(""), 0);
+    }
+
+    #[test]
+    fn click_modifiers_are_validated_and_xdotool_aliases_work() {
+        assert_eq!(
+            click_flags("Super_L+Shift").unwrap(),
+            FLAG_COMMAND | FLAG_SHIFT
+        );
+        assert_eq!(click_flags("Control").unwrap(), FLAG_CONTROL);
+        assert!(click_flags("a").is_err());
+    }
+
+    #[test]
+    fn keypad_keys_are_available() {
+        assert_eq!(code("KP_0"), Some(82));
+        assert_eq!(code("kp_9"), Some(92));
     }
 
     #[test]

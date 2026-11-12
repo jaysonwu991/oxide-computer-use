@@ -5,43 +5,47 @@ description: Drive this Mac's apps through the oxide-reins MCP server — list a
 
 # Computer Use
 
-The `oxide-reins` MCP server exposes the desktop as tools. Reading is cheap;
-acting moves the real pointer and keyboard, so look first and act on what you
-saw. `oxide-reins install` registers it under `oxide-reins`, or
-`oxide-reins-local` for Claude Code and Codex, which already ship their own
-Computer Use under the plain `computer-use` name; the tool names are identical either way.
+The `oxide-reins` MCP server exposes the desktop as tools. Look first and
+act on what you saw; acting moves the real pointer and keyboard.
+`oxide-reins install` registers the same server name for Oxide, Codex and
+Claude Code, beside their built-in Computer Use servers.
 
 ## Loop
 
 1. Use `permissions` for setup problems: it checks this MCP process without prompting and identifies the hosting app. In Oxide Desktop grant Oxide.app, not an unrelated terminal.
-2. `list_apps` — find the app's exact name or pid. Add
+2. `list_apps` — find the app's bundle id, display name, path or pid. Add
    `{"include_helpers": true}` when a native file picker or another
    window-server surface seems missing.
-3. `get_app_state` with that `app` — read the indexed tree. Pass `window` (an
-   index or a title substring) when the app has more than one window; the reply
-   lists them.
-4. Act with `element_index`, or `x`/`y` from `include_frames: true`.
+3. `get_app_state` with that `app` — launches the app if needed, returns the
+   indexed tree plus the app-window screenshot, and uses a diff after the first
+   view. Pass `window` (an index or title substring) when there are several
+   windows; pass `disableDiff: true` for a full tree.
+4. Act with `element_index`, or `x`/`y` relative to the returned app-window
+   screenshot.
 5. Read again after the action. Indexes belong to the newest snapshot and to the
    window they came from; a refusal means the state moved, not that the tool is
    broken.
 
 ## Choosing a tool
 
-- `click` uses the element's AXPress action when it has one; the reply says
-  whether it used AXPress or a pointer event.
+- `click` uses AXPress for one plain left click when available. It also supports
+  `mouse_button`, `click_count`, a held modifier `key`, and `duration`; the
+  reply says which path ran.
 - `set_value` is the reliable way to fill a text field, and it fails loudly when
   a control is read-only or ignores the write. `type_text` needs the control
   focused and the app frontmost.
-- `select_text` marks a span for copying or for a following `press_key`.
-- `press_key` takes one key plus `modifiers` (`cmd`, `shift`, `alt`, `ctrl`),
-  for example `{"key":"s","modifiers":"cmd"}` to save.
+- `paste` inserts `text`, `md` or `html` and restores the previous clipboard;
+  prefer it for formatted or multiline content.
+- `select_text` marks a span with optional `prefix`/`suffix`, or places the
+  cursor with `cursor_before` / `cursor_after`.
+- `press_key` uses xdotool-style names and chords, such as `Super+s`,
+  `Control_L+a` or `KP_0`, plus an optional `duration`.
 - `query` when a tree is large: filter by text or role, and take the index from
   its output, which also refreshes the snapshot.
 - `perform_secondary_action` for AX actions such as `AXShowMenu` on a row; an
   unsupported action comes back with the list the element does support.
-- `screenshot`, or `get_app_state` with `include_screenshot: true`, only when
-  the tree is not enough — it needs Screen Recording, and not every agent can
-  see the image.
+- `get_app_state` includes the window screenshot by default. Set
+  `include_screenshot: false` only when a text-only observation is enough.
 
 ## Keeping context small
 
@@ -49,7 +53,11 @@ Computer Use under the plain `computer-use` name; the tool names are identical e
 - `query` replaces a full tree dump when you know what you are looking for.
 - `text_limit: "max"` is for the one field you must read in full; the default
   truncates long values with their true length.
-- Screenshots are never attached unless you ask. For visual review, capture the target window and return its image to the client; Oxide Desktop shows a clickable preview. Re-observe after changes and leave submission to the user when requested. Pointer tools use the foreground; `type_text` and `press_key` with `background: true` post to one app without activating it, and the reply asks for verification because an app may ignore them. Do not promise isolated input beyond that.
+- App state is a diff after the first observation. Use `disableDiff: true` when
+  an index shift is unclear. Re-observe after changes and leave submission to
+  the user when requested. Pointer tools use the foreground; `type_text` and
+  `press_key` with `background: true` post to one app without activating it, and
+  the reply asks for verification because an app may ignore them.
 
 ## Failures worth reading
 

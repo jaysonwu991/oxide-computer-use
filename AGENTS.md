@@ -1,6 +1,6 @@
 # oxide-reins
 
-Computer Use as a stdio MCP server for any agent on macOS: the running apps, an
+Computer Use as a stdio MCP server for any agent on macOS: launchable/running apps, an
 app's accessibility tree, and the actions that drive it.
 
 ## Layout
@@ -81,8 +81,9 @@ app's accessibility tree, and the actions that drive it.
   verification because an app may ignore delivered keys.
 - The hosting bundle is refused unless `apps self-automation allow` says
   otherwise. Compare bundle paths; a missing identity is not the host.
-- Observations are cheap by default: no screenshot unless asked, an output cap
-  that says it truncated, and `query` for large trees.
+- Observations include the current app-window screenshot by default; later reads
+  are diffs, `include_screenshot: false` gives text-only state, and
+  `max_output_chars` plus `query` bound large trees.
 - Tool failures are `isError` results with a message an agent can act on, not
   JSON-RPC errors. Protocol errors are reserved for bad JSON and unknown
   methods.

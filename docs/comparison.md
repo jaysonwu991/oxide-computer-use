@@ -17,15 +17,15 @@ linked reports, not a fresh verification of every third-party release.
 | --- | --- | --- | --- |
 | Platforms | macOS only; other builds return an explicit error | macOS, Linux, Windows | macOS and Windows; background operation differs by OS |
 | Distribution | macOS arm64/x64 archives or source build; optional development helper built in the Oxide repo | npm package, app bundle, onboarding app | part of Codex |
-| MCP client setup | `install --client oxide\|claude\|codex\|cursor\|desktop`, or `--print` | documented config snippets, `install-codex-mcp` | built in; this server registers beside it as `oxide-reins-local` |
-| Tool surface | 13 tools, including `permissions`, `query` and `screenshot` | 9–10, `select_text` on macOS | product-defined |
-| Observation | accessibility tree, indexes bound to the window they came from | accessibility tree; screenshot embedded in every state by default | screenshots plus accessibility |
+| MCP client setup | `install --client oxide\|claude\|codex\|cursor\|desktop`, or `--print` | documented config snippets, `install-codex-mcp` | built in; this server registers beside it as `oxide-reins` |
+| Tool surface | 14 tools: the 11 macOS window operations plus `permissions`, `query` and `screenshot` | 9–10, `select_text` on macOS | product-defined |
+| Observation | accessibility diff/full tree plus app-window screenshot; indexes bound to the window they came from | accessibility tree; screenshot embedded in every state by default | screenshots plus accessibility |
 | Value writes | refused unless the element reports `AXValue` settable, then read back | reported success on controls that ignored the write ([#83](https://github.com/iFurySt/open-computer-use/issues/83)) | n/a |
 | Stale indexes | rejected by name, with the app and window they belong to | not detected | n/a |
 | An app that stops answering | the read fails inside a two-second messaging bound; the previous snapshot stays addressable | not detected | n/a |
 | A call that breaks | answered as an `isError` result; the connection keeps serving | n/a | n/a |
 | Long text | per-value `text_limit` (`"max"` allowed), explicit truncation notes | fixed truncation per platform ([#36](https://github.com/iFurySt/open-computer-use/issues/36)) | n/a |
-| Reply size | `max_output_chars` cap, screenshot opt-in per call | screenshot in every reply ([#83](https://github.com/iFurySt/open-computer-use/issues/83) 6a) | n/a |
+| Reply size | `max_output_chars` cap; app-state screenshot can be disabled | screenshot in every reply ([#83](https://github.com/iFurySt/open-computer-use/issues/83) 6a) | n/a |
 | Per-app control | deny/allow lists enforced in the server, before any AX call | configurable allow list ([#12](https://github.com/iFurySt/open-computer-use/issues/12)) | product approvals |
 | Dragging | paced HID events with deltas, the fix for [#53](https://github.com/iFurySt/open-computer-use/issues/53) | paced pointer events ([#53](https://github.com/iFurySt/open-computer-use/issues/53) open) | n/a |
 | Testing | Unit/integration checks, no permissions needed for the config, protocol and policy paths | app-level smoke suite | internal |
@@ -43,10 +43,11 @@ linked reports, not a fresh verification of every third-party release.
 - **Refusals instead of silent no-ops.** `set_value` checks `AXIsAttributeSettable`
   and reads the value back; `perform_secondary_action` refuses an action the
   element does not list. An agent can tell "nothing happened" from "it worked".
-- **Observation is cheap by default.** No screenshot unless
-  `include_screenshot: true`, a `max_output_chars` cap with a visible note, and
-  `query` for searching a large tree. In an agent loop the text budget is the
-  dominant cost.
+- **Observation matches the current app window.** The first state is a full
+  accessibility tree, later states are diffs, and the reply includes the window
+  screenshot by default. `include_screenshot: false` gives a text-only
+  observation, `max_output_chars` caps text with a visible note, and `query`
+  searches a large tree.
 - **Elements belong to a window.** A snapshot binds each index to its
   `AXWindow`; an index from before a window closed or moved is refused rather
   than applied to whatever is now at that position.

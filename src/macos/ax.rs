@@ -38,7 +38,7 @@ const AX_VALUE_CF_RANGE: u32 = 4;
 pub const MESSAGING_TIMEOUT_SECONDS: f32 = 2.0;
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct CFRange {
     pub location: isize,
     pub length: isize,
@@ -367,6 +367,19 @@ impl Element {
 
     pub fn selected_text(&self) -> Option<String> {
         self.string_attribute("AXSelectedText")
+    }
+
+    pub fn selected_range(&self) -> Option<CFRange> {
+        let value = self.attribute("AXSelectedTextRange")?;
+        unsafe {
+            let mut range = CFRange::default();
+            let ok = AXValueGetValue(
+                value.raw(),
+                AX_VALUE_CF_RANGE,
+                &mut range as *mut CFRange as *mut c_void,
+            );
+            ok.then_some(range)
+        }
     }
 
     pub fn string_value(&self) -> Option<String> {

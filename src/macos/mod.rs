@@ -4,14 +4,16 @@ pub mod apps;
 pub mod ax;
 pub mod cf;
 pub mod input;
+pub mod pasteboard;
 pub mod screen;
 pub mod takeover;
 pub mod tree;
 
 use anyhow::{anyhow, bail, Result};
 use serde_json::Value;
+use std::time::Duration;
 
-use crate::policy::{self, Policy};
+use crate::policy::{self, Access, Policy};
 use crate::runtime::State;
 
 use ax::{CFRange, CGPoint, Element};
@@ -23,12 +25,23 @@ struct Cached {
     element: Element,
     center: Option<CGPoint>,
     role: String,
+    text: String,
     window: Option<Element>,
+}
+
+#[derive(Clone)]
+struct CoordinateWindow {
+    app: String,
+    window: apps::Window,
+    scale_x: f64,
+    scale_y: f64,
 }
 
 pub struct Runtime {
     nodes: Vec<Cached>,
     cached_app: Option<String>,
+    cached_window: Option<String>,
+    coordinate_window: Option<CoordinateWindow>,
     policy: Policy,
     /// The `.app` that launched this server, resolved once: it is the app a
     /// self-automation rule may refuse to drive.
@@ -40,6 +53,8 @@ impl Default for Runtime {
         Runtime {
             nodes: Vec::new(),
             cached_app: None,
+            cached_window: None,
+            coordinate_window: None,
             policy: Policy::load(),
             host: crate::permissions::launching_app(),
         }
@@ -127,6 +142,40 @@ fn bool_arg(args: &Value, key: &str) -> bool {
     args.get(key).and_then(Value::as_bool).unwrap_or(false)
 }
 
+fn duration_arg(args: &Value, key: &str) -> Result<Option<Duration>> {
+    let Some(seconds) = number_arg(args, key) else {
+        return Ok(None);
+    };
+    if !seconds.is_finite() || seconds < 0.0 {
+        bail!("`{key}` must be a finite number of seconds >= 0");
+    }
+    Ok(Some(Duration::from_secs_f64(seconds)))
+}
+
+fn mouse_button(args: &Value) -> Result<input::Button> {
+    let value = args.get("mouse_button").or_else(|| args.get("button"));
+    let value = match value {
+        Some(Value::String(text)) => text.trim().to_lowercase(),
+        Some(Value::Number(number)) => number.to_string(),
+        Some(other) => bail!("`mouse_button` must be a string or number; got {other}"),
+        None => "left".to_string(),
+    };
+    match value.as_str() {
+        "left" | "l" | "0" => Ok(input::Button::Left),
+        "right" | "r" | "1" => Ok(input::Button::Right),
+        "middle" | "m" | "2" => Ok(input::Button::Middle),
+        other => bail!("`mouse_button` must be left, right or middle (or l/r/m); got `{other}`"),
+    }
+}
+
+fn button_name(button: &input::Button) -> &'static str {
+    match button {
+        input::Button::Left => "left",
+        input::Button::Right => "right",
+        input::Button::Middle => "middle",
+    }
+}
+
 fn text_limit(args: &Value) -> Option<usize> {
     match args.get("text_limit") {
         Some(Value::Number(number)) => number.as_u64().map(|value| value as usize),
@@ -149,6 +198,7 @@ fn cap_output(text: String, limit: usize) -> String {
 
 /// Character range of `needle` in `haystack`, counted the way Cocoa text
 /// ranges are: UTF-16 code units.
+#[cfg(test)]
 pub fn find_range(haystack: &str, needle: &str) -> Option<CFRange> {
     if needle.is_empty() {
         return None;
@@ -180,6 +230,105 @@ pub fn find_range(haystack: &str, needle: &str) -> Option<CFRange> {
         }
     }
     None
+}
+
+fn find_range_with_context(
+    haystack: &str,
+    needle: &str,
+    prefix: Option<&str>,
+    suffix: Option<&str>,
+) -> Option<CFRange> {
+    fn locate(
+        units: &[u16],
+        target: &[u16],
+        prefix: Option<&[u16]>,
+        suffix: Option<&[u16]>,
+    ) -> Option<CFRange> {
+        if target.is_empty() || target.len() > units.len() {
+            return None;
+        }
+        for start in 0..=units.len() - target.len() {
+            if units[start..start + target.len()] != target[..] {
+                continue;
+            }
+            let prefix_ok = prefix.is_none_or(|prefix| {
+                prefix.len() <= start && units[start - prefix.len()..start] == prefix[..]
+            });
+            let end = start + target.len();
+            let suffix_ok = suffix.is_none_or(|suffix| {
+                suffix.len() <= units.len() - end && units[end..end + suffix.len()] == suffix[..]
+            });
+            if prefix_ok && suffix_ok {
+                return Some(CFRange {
+                    location: start as isize,
+                    length: target.len() as isize,
+                });
+            }
+        }
+        None
+    }
+
+    let units: Vec<u16> = haystack.encode_utf16().collect();
+    let target: Vec<u16> = needle.encode_utf16().collect();
+    let prefix_units: Option<Vec<u16>> = prefix.map(|text| text.encode_utf16().collect());
+    let suffix_units: Option<Vec<u16>> = suffix.map(|text| text.encode_utf16().collect());
+    locate(
+        &units,
+        &target,
+        prefix_units.as_deref(),
+        suffix_units.as_deref(),
+    )
+    .or_else(|| {
+        let lower_units: Vec<u16> = haystack.to_lowercase().encode_utf16().collect();
+        let lower_target: Vec<u16> = needle.to_lowercase().encode_utf16().collect();
+        let lower_prefix: Option<Vec<u16>> =
+            prefix.map(|text| text.to_lowercase().encode_utf16().collect());
+        let lower_suffix: Option<Vec<u16>> =
+            suffix.map(|text| text.to_lowercase().encode_utf16().collect());
+        locate(
+            &lower_units,
+            &lower_target,
+            lower_prefix.as_deref(),
+            lower_suffix.as_deref(),
+        )
+    })
+}
+
+fn png_size(bytes: &[u8]) -> Option<(f64, f64)> {
+    if bytes.len() < 24 || &bytes[..8] != b"\x89PNG\r\n\x1a\n" {
+        return None;
+    }
+    let width = u32::from_be_bytes(bytes[16..20].try_into().ok()?);
+    let height = u32::from_be_bytes(bytes[20..24].try_into().ok()?);
+    (width > 0 && height > 0).then_some((width as f64, height as f64))
+}
+
+fn render_diff(previous: &[Cached], current: &[tree::Node]) -> String {
+    if previous.len() != current.len() {
+        return format!(
+            "The accessibility structure changed ({} to {} elements). Current indexes:\n{}",
+            previous.len(),
+            current.len(),
+            tree::render(current)
+        );
+    }
+    let mut lines = Vec::new();
+    for index in 0..current.len() {
+        if previous[index].text == current[index].text {
+            continue;
+        }
+        lines.push(format!(
+            "{index:>4} ~ {}{} (was: {})",
+            "  ".repeat(current[index].depth),
+            current[index].text,
+            previous[index].text
+        ));
+    }
+    if lines.is_empty() {
+        "No accessibility changes since the previous state.".to_string()
+    } else {
+        format!("Changed accessibility elements:\n{}", lines.join("\n"))
+    }
 }
 
 fn describe_windows(windows: &[Element]) -> String {
@@ -217,20 +366,56 @@ impl Runtime {
     }
 
     fn resolved(&self, name: &str) -> Result<apps::App> {
-        let app = apps::resolve(name).ok_or_else(|| {
-            let known = apps::app_names();
-            let hint = if known.is_empty() {
-                "no app with a window is running".to_string()
-            } else {
-                format!("running apps: {}", known.join(", "))
-            };
-            anyhow!("no running app matches `{name}`; {hint}")
-        })?;
+        let app = match apps::resolve(name) {
+            Some(app) => app,
+            None => {
+                let Some(installed) = apps::resolve_installed(name) else {
+                    let known = apps::app_names();
+                    let hint = if known.is_empty() {
+                        "no launchable app matches, and no app with a window is running".to_string()
+                    } else {
+                        format!("running apps: {}", known.join(", "))
+                    };
+                    bail!("no app matches `{name}`; {hint}");
+                };
+                self.check_installed_rules(&installed)?;
+                apps::launch_installed(&installed)?
+            }
+        };
         let pid = app.pid;
         self.policy.authorize(&app.name, || apps::identity(pid))?;
         self.check_self_automation(&app)?;
         self.check_terminal(&app)?;
         Ok(app)
+    }
+
+    fn check_installed_rules(&self, app: &apps::InstalledApp) -> Result<()> {
+        if let Access::Blocked(message) = self.policy.check(&app.name, app.identity.as_ref())? {
+            bail!("{message}");
+        }
+        if self.policy.terminals() == policy::Fallback::Deny
+            && self.policy.is_terminal(&app.name, app.identity.as_ref())
+        {
+            bail!(
+                "`{}` is a terminal{}, and the policy refuses terminal automation: typing into a shell can start another agent. Allow it with `oxide-reins apps terminals allow` if that is intended",
+                app.name,
+                app.identity
+                    .as_ref()
+                    .map(|identity| format!(" ({})", identity.bundle_id))
+                    .unwrap_or_default()
+            );
+        }
+        if self.policy.self_automation() == policy::Fallback::Deny {
+            if let (Some(host), Some(identity)) = (self.host.as_deref(), app.identity.as_ref()) {
+                if drives_itself(Some(host), Some(&identity.path)) {
+                    bail!(
+                        "`{}` is the app hosting this MCP server ({host}), and the policy refuses self-automation. Name another app, or allow it with `oxide-reins apps self-automation allow`",
+                        app.name
+                    );
+                }
+            }
+        }
+        Ok(())
     }
 
     /// A terminal is a way to start another agent, so it is refused by default.
@@ -336,8 +521,9 @@ impl Runtime {
         Ok(Some(window))
     }
 
-    fn store(&mut self, app: &apps::App, snapshot: Snapshot) {
+    fn store(&mut self, app: &apps::App, window: Option<String>, snapshot: Snapshot) {
         self.cached_app = Some(app.name.clone());
+        self.cached_window = window;
         self.nodes = snapshot
             .nodes
             .into_iter()
@@ -345,6 +531,7 @@ impl Runtime {
                 element: node.element,
                 center: node.center,
                 role: node.text.split(' ').next().unwrap_or_default().to_string(),
+                text: node.text,
                 window: node.window,
             })
             .collect();
@@ -392,44 +579,52 @@ impl Runtime {
 
     pub fn list_apps(&self, include_helpers: bool) -> Result<String> {
         self.policy.reload();
-        let mut lines = Vec::new();
-        for app in apps::running_apps_with(include_helpers) {
-            let windows: Vec<&apps::Window> = app
-                .windows
-                .iter()
-                .filter(|window| window.layer == 0)
-                .collect();
-            if windows.is_empty() {
-                continue;
-            }
-            let mut described: Vec<String> = Vec::new();
-            for window in &windows {
-                let label = if window.title.trim().is_empty() {
-                    format!("{:.0}x{:.0}", window.width, window.height)
-                } else {
-                    format!(
-                        "\"{}\" {:.0}x{:.0}",
-                        window.title.trim(),
-                        window.width,
-                        window.height
-                    )
-                };
-                if !described.contains(&label) {
-                    described.push(label);
+        let mut entries = Vec::new();
+        for app in apps::installed_apps() {
+            let marker = self
+                .policy
+                .access(&app.name, app.identity.as_ref())
+                .marker()
+                .trim();
+            entries.push(serde_json::json!({
+                "id": app.id,
+                "displayName": app.name,
+                "isRunning": app.pid.is_some(),
+                "path": app.path,
+                "policy": if marker.is_empty() { "allow" } else { marker },
+            }));
+        }
+        if include_helpers {
+            for app in apps::running_apps_with(true) {
+                if entries.iter().any(|entry| {
+                    entry["displayName"]
+                        .as_str()
+                        .is_some_and(|name| name.eq_ignore_ascii_case(&app.name))
+                }) {
+                    continue;
                 }
+                entries.push(serde_json::json!({
+                    "id": app.pid.to_string(),
+                    "displayName": app.name,
+                    "isRunning": true,
+                    "path": Value::Null,
+                    "policy": self.access_marker(&app).trim(),
+                }));
             }
-            let marker = self.access_marker(&app);
-            lines.push(format!(
-                "{} (pid {}) — {}{marker}",
-                app.name,
-                app.pid,
-                described.join(", ")
-            ));
         }
-        if lines.is_empty() {
-            return Ok("No app with an on-screen window is running.".to_string());
-        }
-        Ok(lines.join("\n"))
+        entries.sort_by(|left, right| {
+            left["displayName"]
+                .as_str()
+                .unwrap_or_default()
+                .to_lowercase()
+                .cmp(
+                    &right["displayName"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_lowercase(),
+                )
+        });
+        Ok(serde_json::to_string_pretty(&entries)?)
     }
 
     pub fn get_app_state(&mut self, args: &Value) -> Result<State> {
@@ -454,10 +649,23 @@ impl Runtime {
         limits.include_frames = bool_arg(args, "include_frames");
 
         let snapshot = snapshot(&app, root, &limits, scoped.as_ref())?;
-        let body = tree::render(&snapshot.nodes);
+        let window_label = scoped
+            .as_ref()
+            .and_then(|window| window.string_attribute("AXTitle"))
+            .map(|title| title.trim().to_string());
+        let disable_diff = bool_arg(args, "disableDiff") || bool_arg(args, "disable_diff");
+        let body = if !disable_diff
+            && self.cached_app.as_deref() == Some(&app.name)
+            && self.cached_window == window_label
+            && !self.nodes.is_empty()
+        {
+            render_diff(&self.nodes, &snapshot.nodes)
+        } else {
+            tree::render(&snapshot.nodes)
+        };
         let truncated = snapshot.truncated;
         let count = snapshot.nodes.len();
-        self.store(&app, snapshot);
+        self.store(&app, window_label, snapshot);
 
         let mut header = format!("App: {} (pid {})", app.name, app.pid);
         if let Some(window) = &scoped {
@@ -502,23 +710,53 @@ impl Runtime {
         let limit = usize_arg(args, "max_output_chars").unwrap_or(DEFAULT_MAX_OUTPUT_CHARS);
         let mut text = cap_output(format!("{header}\n\n{body}"), limit);
 
+        let title = scoped
+            .as_ref()
+            .and_then(|window| window.string_attribute("AXTitle"));
+        let include_screenshot = args
+            .get("include_screenshot")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
         let mut image = None;
-        if bool_arg(args, "include_screenshot") {
-            let title = scoped
-                .as_ref()
-                .and_then(|window| window.string_attribute("AXTitle"));
-            match self.capture_window(&app, title.as_deref()) {
-                Ok(bytes) => {
-                    text.push_str("\n\nScreenshot attached for the same app.");
-                    image = Some(bytes);
+        match self.target_window(&app, title.as_deref()) {
+            Ok(window) => {
+                let mut scale_x = 1.0;
+                let mut scale_y = 1.0;
+                if include_screenshot {
+                    match screen::capture(Some(window.number)) {
+                        Ok(bytes) => {
+                            if let Some((pixel_width, pixel_height)) = png_size(&bytes) {
+                                if window.width > 0.0 && window.height > 0.0 {
+                                    scale_x = pixel_width / window.width;
+                                    scale_y = pixel_height / window.height;
+                                }
+                            }
+                            image = Some(bytes);
+                        }
+                        Err(error) => {
+                            text.push_str(&format!("\n\nScreenshot unavailable: {error:#}"))
+                        }
+                    }
                 }
-                Err(error) => text.push_str(&format!("\n\nScreenshot unavailable: {error:#}")),
+                self.coordinate_window = Some(CoordinateWindow {
+                    app: app.name.clone(),
+                    window,
+                    scale_x,
+                    scale_y,
+                });
+                if image.is_some() {
+                    text.push_str("\n\nScreenshot attached for the same app.");
+                }
             }
+            Err(error) if include_screenshot => {
+                text.push_str(&format!("\n\nScreenshot unavailable: {error:#}"))
+            }
+            Err(_) => self.coordinate_window = None,
         }
         Ok(State { text, image })
     }
 
-    fn capture_window(&self, app: &apps::App, title: Option<&str>) -> Result<Vec<u8>> {
+    fn target_window(&self, app: &apps::App, title: Option<&str>) -> Result<apps::Window> {
         let windows = apps::windows_for(app.pid);
         let wanted = title
             .map(|title| title.trim().to_lowercase())
@@ -535,10 +773,14 @@ impl Runtime {
                     .unwrap_or(std::cmp::Ordering::Equal)
             })
         });
-        let number = target
-            .map(|window| window.number)
-            .ok_or_else(|| anyhow!("{} has no on-screen window to capture", app.name))?;
-        screen::capture(Some(number))
+        target
+            .cloned()
+            .ok_or_else(|| anyhow!("{} has no on-screen window to capture", app.name))
+    }
+
+    fn capture_window(&self, app: &apps::App, title: Option<&str>) -> Result<Vec<u8>> {
+        let window = self.target_window(app, title)?;
+        screen::capture(Some(window.number))
     }
 
     pub fn query(&mut self, args: &Value) -> Result<String> {
@@ -577,7 +819,11 @@ impl Runtime {
             .map(|(index, node)| (index, node.text.clone()))
             .collect();
 
-        self.store(&app, snapshot);
+        let window_label = scoped
+            .as_ref()
+            .and_then(|window| window.string_attribute("AXTitle"))
+            .map(|title| title.trim().to_string());
+        self.store(&app, window_label, snapshot);
 
         if matches.is_empty() {
             return Ok(format!(
@@ -598,20 +844,62 @@ impl Runtime {
         Ok(cap_output(out, limit))
     }
 
+    fn point_in_window(&self, app: &apps::App, x: f64, y: f64) -> Result<CGPoint> {
+        let current = self
+            .coordinate_window
+            .as_ref()
+            .filter(|current| current.app.eq_ignore_ascii_case(&app.name))
+            .cloned();
+        let current = match current {
+            Some(current) => current,
+            None => CoordinateWindow {
+                app: app.name.clone(),
+                window: self.target_window(app, None)?,
+                scale_x: 1.0,
+                scale_y: 1.0,
+            },
+        };
+        Ok(CGPoint {
+            x: current.window.x + x / current.scale_x.max(0.01),
+            y: current.window.y + y / current.scale_y.max(0.01),
+        })
+    }
+
+    fn window_size(&self, app: &apps::App) -> Result<(f64, f64)> {
+        let window = self
+            .coordinate_window
+            .as_ref()
+            .filter(|current| current.app.eq_ignore_ascii_case(&app.name))
+            .map(|current| current.window.clone())
+            .unwrap_or(self.target_window(app, None)?);
+        Ok((window.width, window.height))
+    }
+
     pub fn click(&mut self, args: &Value) -> Result<String> {
         let name = required_app(args)?;
         let app = self.resolved(&name)?;
         self.guard()?;
         let index = integer_arg(args, "element_index");
-        let button = match string_arg(args, "button").as_deref() {
-            Some("right") => input::Button::Right,
-            _ => input::Button::Left,
+        let button = mouse_button(args)?;
+        let click_count = usize_arg(args, "click_count").unwrap_or(1);
+        if click_count == 0 {
+            bail!("`click_count` must be at least 1");
+        }
+        let hold = duration_arg(args, "duration")?.unwrap_or(Duration::from_millis(35));
+        let key_flags = match string_arg(args, "key") {
+            Some(key) => input::click_flags(&key)?,
+            None => 0,
         };
+        let plain_click = index.is_some()
+            && matches!(button, input::Button::Left)
+            && click_count == 1
+            && key_flags == 0
+            && args.get("duration").is_none();
 
         if let Some(index) = index {
             let cached = self.checked_element(index, Some(&app.name))?;
             let element = &cached.element;
-            if matches!(button, input::Button::Left) && element.has_action("AXPress") {
+            if plain_click && element.has_action("AXPress") {
                 element.perform("AXPress")?;
                 return Ok(format!(
                     "Clicked element {index} ({}) with AXPress; it never needed the pointer.",
@@ -623,10 +911,13 @@ impl Runtime {
             })?;
             let role = cached.role.clone();
             Self::app_element(&app)?.activate_app()?;
-            input::click(center, button)?;
+            input::click_with(center, button, click_count, hold, key_flags)?;
             return Ok(format!(
-                "Clicked element {index} ({role}) at ({:.0},{:.0}) with a pointer event; the app is now frontmost.",
-                center.x, center.y
+                "Clicked element {index} ({role}) at ({:.0},{:.0}) with {} button click{} and a pointer event; the app is now frontmost.",
+                center.x,
+                center.y,
+                button_name(&button),
+                if click_count == 1 { "" } else { "s" },
             ));
         }
 
@@ -634,10 +925,13 @@ impl Runtime {
             (Some(x), Some(y)) => (x, y),
             _ => bail!("pass element_index, or x and y together"),
         };
+        let point = self.point_in_window(&app, x, y)?;
         Self::app_element(&app)?.activate_app()?;
-        input::click(CGPoint { x, y }, button)?;
+        input::click_with(point, button, click_count, hold, key_flags)?;
         Ok(format!(
-            "Clicked ({x:.0},{y:.0}) with a pointer event; the app is now frontmost."
+            "Clicked app-window coordinate ({x:.0},{y:.0}) with {} button click{} and a pointer event; the app is now frontmost.",
+            button_name(&button),
+            if click_count == 1 { "" } else { "s" },
         ))
     }
 
@@ -714,18 +1008,52 @@ impl Runtime {
         let text = element
             .text()
             .ok_or_else(|| anyhow!("the element exposes no text to select"))?;
-        let range = find_range(&text, &needle).ok_or_else(|| {
+        let prefix = string_arg(args, "prefix");
+        let suffix = string_arg(args, "suffix");
+        let found = find_range_with_context(&text, &needle, prefix.as_deref(), suffix.as_deref())
+            .ok_or_else(|| {
             let preview: String = text.chars().take(120).collect();
-            anyhow!("`{needle}` is not in the element text; it starts with {preview:?}")
+            anyhow!(
+                "`{needle}`{} is not in the element text; it starts with {preview:?}",
+                if prefix.is_some() || suffix.is_some() {
+                    " with the requested prefix/suffix"
+                } else {
+                    ""
+                }
+            )
         })?;
+        let selection_type = string_arg(args, "selection_type")
+            .or_else(|| string_arg(args, "selection"))
+            .unwrap_or_else(|| "text".to_string());
+        let range = match selection_type.trim().to_lowercase().as_str() {
+            "text" => found,
+            "cursor_before" => CFRange {
+                location: found.location,
+                length: 0,
+            },
+            "cursor_after" => CFRange {
+                location: found.location + found.length,
+                length: 0,
+            },
+            other => {
+                bail!("`selection_type` must be text, cursor_before or cursor_after; got `{other}`")
+            }
+        };
         element.select_range(range)?;
-        let selected = element.selected_text().unwrap_or_default();
-        if !selected.is_empty() && selected != needle {
-            bail!("the element selected {selected:?} instead of {needle:?}");
+        if range.length == 0 {
+            let selected = element.selected_range();
+            if selected != Some(range) {
+                bail!("the element moved the cursor to {selected:?} instead of {range:?}");
+            }
+        } else {
+            let selected = element.selected_text().unwrap_or_default();
+            if !selected.is_empty() && selected != needle {
+                bail!("the element selected {selected:?} instead of {needle:?}");
+            }
         }
         Ok(format!(
-            "Selected {} characters at {} ({needle:?}).",
-            range.length, range.location
+            "Selected {} characters at {} ({needle:?}) with {selection_type}.",
+            found.length, found.location
         ))
     }
 
@@ -776,6 +1104,7 @@ impl Runtime {
         let key = string_arg(args, "key").ok_or_else(|| anyhow!("`key` is required"))?;
         let modifiers = string_arg(args, "modifiers").unwrap_or_default();
         input::check(&key, &modifiers)?;
+        let duration = duration_arg(args, "duration")?.unwrap_or(Duration::ZERO);
         let background = bool_arg(args, "background");
         let mut target: Option<apps::App> = None;
         match string_arg(args, "app") {
@@ -796,8 +1125,8 @@ impl Runtime {
             }
         }
         let pressed = match &target {
-            Some(app) => input::press_in(app.pid, &key, &modifiers)?,
-            None => input::press(&key, &modifiers)?,
+            Some(app) => input::press_in_for(app.pid, &key, &modifiers, duration)?,
+            None => input::press_for(&key, &modifiers, duration)?,
         };
         let spelling = match key.rsplit_once('+') {
             Some((_, rest)) if !rest.is_empty() => rest.trim(),
@@ -819,66 +1148,114 @@ impl Runtime {
 
     pub fn scroll(&mut self, args: &Value) -> Result<String> {
         let direction = string_arg(args, "direction").unwrap_or_else(|| "down".to_string());
-        let lines = integer_arg(args, "lines").unwrap_or(3).abs().max(1) as i32;
-        let signed = if direction.eq_ignore_ascii_case("up") {
-            lines
-        } else if direction.eq_ignore_ascii_case("down") {
-            -lines
-        } else {
-            bail!("`direction` must be `up` or `down`")
+        let pages = number_arg(args, "pages")
+            .or_else(|| number_arg(args, "lines").map(|lines| lines / 10.0))
+            .unwrap_or(1.0);
+        if !pages.is_finite() || pages <= 0.0 {
+            bail!("`pages` must be a finite number > 0");
+        }
+        let target_app = match string_arg(args, "app") {
+            Some(name) => Some(self.resolved(&name)?),
+            None => None,
+        };
+        self.guard()?;
+        let (view_width, view_height) = match &target_app {
+            Some(app) => self.window_size(app)?,
+            None => (1000.0, 800.0),
+        };
+        let (horizontal, vertical) = match direction.trim().to_lowercase().as_str() {
+            "up" | "u" => (0, (pages * view_height).round() as i32),
+            "down" | "d" => (0, -(pages * view_height).round() as i32),
+            "left" | "l" => ((pages * view_width).round() as i32, 0),
+            "right" | "r" => (-(pages * view_width).round() as i32, 0),
+            _ => bail!("`direction` must be up, down, left or right"),
         };
 
         let point = if let Some(index) = integer_arg(args, "element_index") {
-            self.checked_element(index, string_arg(args, "app").as_deref())?
+            self.checked_element(index, target_app.as_ref().map(|app| app.name.as_str()))?
                 .center
         } else {
             match (number_arg(args, "x"), number_arg(args, "y")) {
-                (Some(x), Some(y)) => Some(CGPoint { x, y }),
+                (Some(x), Some(y)) => Some(match &target_app {
+                    Some(app) => self.point_in_window(app, x, y)?,
+                    None => CGPoint { x, y },
+                }),
                 _ => None,
             }
         };
 
-        match string_arg(args, "app") {
-            Some(name) => {
-                let app = self.resolved(&name)?;
-                self.guard()?;
-                Self::app_element(&app)?.activate_app()?;
-            }
-            None => self.guard()?,
+        if let Some(app) = &target_app {
+            Self::app_element(app)?.activate_app()?;
         }
-        input::scroll(point, signed)?;
-        Ok(format!("Scrolled {direction} {lines} lines."))
+        input::scroll(point, horizontal, vertical)?;
+        Ok(format!("Scrolled {direction} {pages} page(s)."))
     }
 
     pub fn drag(&mut self, args: &Value) -> Result<String> {
+        let target_app = match string_arg(args, "app") {
+            Some(name) => Some(self.resolved(&name)?),
+            None => None,
+        };
+        self.guard()?;
         let start = match integer_arg(args, "element_index") {
             Some(index) => self
-                .checked_element(index, string_arg(args, "app").as_deref())?
+                .checked_element(index, target_app.as_ref().map(|app| app.name.as_str()))?
                 .center
                 .ok_or_else(|| anyhow!("element {index} has no on-screen frame"))?,
+            None => {
+                let x = number_arg(args, "from_x")
+                    .ok_or_else(|| anyhow!("pass element_index or from_x/from_y"))?;
+                let y = number_arg(args, "from_y")
+                    .ok_or_else(|| anyhow!("pass element_index or from_x/from_y"))?;
+                match &target_app {
+                    Some(app) => self.point_in_window(app, x, y)?,
+                    None => CGPoint { x, y },
+                }
+            }
+        };
+        let end = match &target_app {
+            Some(app) => self.point_in_window(
+                app,
+                number_arg(args, "to_x").ok_or_else(|| anyhow!("`to_x` is required"))?,
+                number_arg(args, "to_y").ok_or_else(|| anyhow!("`to_y` is required"))?,
+            )?,
             None => CGPoint {
-                x: number_arg(args, "from_x")
-                    .ok_or_else(|| anyhow!("pass element_index or from_x/from_y"))?,
-                y: number_arg(args, "from_y")
-                    .ok_or_else(|| anyhow!("pass element_index or from_x/from_y"))?,
+                x: number_arg(args, "to_x").ok_or_else(|| anyhow!("`to_x` is required"))?,
+                y: number_arg(args, "to_y").ok_or_else(|| anyhow!("`to_y` is required"))?,
             },
         };
-        let end = CGPoint {
-            x: number_arg(args, "to_x").ok_or_else(|| anyhow!("`to_x` is required"))?,
-            y: number_arg(args, "to_y").ok_or_else(|| anyhow!("`to_y` is required"))?,
-        };
-        match string_arg(args, "app") {
-            Some(name) => {
-                let app = self.resolved(&name)?;
-                self.guard()?;
-                Self::app_element(&app)?.activate_app()?;
-            }
-            None => self.guard()?,
+        if let Some(app) = &target_app {
+            Self::app_element(app)?.activate_app()?;
         }
         input::drag(start, end)?;
         Ok(format!(
             "Dragged from ({:.0},{:.0}) to ({:.0},{:.0}).",
             start.x, start.y, end.x, end.y
+        ))
+    }
+
+    pub fn paste(&mut self, args: &Value) -> Result<String> {
+        let name = required_app(args)?;
+        let app = self.resolved(&name)?;
+        self.guard()?;
+        let text = args
+            .get("text")
+            .and_then(Value::as_str)
+            .ok_or_else(|| anyhow!("`text` is required"))?;
+        let format = string_arg(args, "format").unwrap_or_else(|| "text".to_string());
+        if !matches!(format.as_str(), "text" | "md" | "html") {
+            bail!("`format` must be text, md or html");
+        }
+        Self::app_element(&app)?.activate_app()?;
+        pasteboard::paste_with_restore(text, &format, || {
+            input::press("v", "cmd")?;
+            std::thread::sleep(Duration::from_millis(200));
+            Ok(())
+        })?;
+        Ok(format!(
+            "Pasted {} characters as {format} into {} and restored the previous clipboard contents.",
+            text.chars().count(),
+            app.name
         ))
     }
 
@@ -906,6 +1283,7 @@ impl Runtime {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn ranges_are_counted_in_utf16_units() {
@@ -932,6 +1310,43 @@ mod tests {
     fn a_missing_or_empty_needle_has_no_range() {
         assert!(find_range("hello", "bye").is_none());
         assert!(find_range("hello", "").is_none());
+    }
+
+    #[test]
+    fn context_disambiguates_repeated_text() {
+        let text = "one target two target three";
+        let range = find_range_with_context(text, "target", Some("two "), None)
+            .expect("the second occurrence has the requested prefix");
+        assert_eq!(range.location, 15);
+        assert_eq!(range.length, 6);
+
+        let range = find_range_with_context(text, "target", None, Some(" three"))
+            .expect("the second occurrence has the requested suffix");
+        assert_eq!(range.location, 15);
+        assert!(find_range_with_context(text, "target", Some("three "), None).is_none());
+    }
+
+    #[test]
+    fn png_header_dimensions_are_read_for_coordinate_scale() {
+        let mut png = vec![0u8; 24];
+        png[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+        png[16..20].copy_from_slice(&2880u32.to_be_bytes());
+        png[20..24].copy_from_slice(&1800u32.to_be_bytes());
+        assert_eq!(png_size(&png), Some((2880.0, 1800.0)));
+        assert_eq!(png_size(b"not a png"), None);
+    }
+
+    #[test]
+    fn computer_use_mouse_button_spellings_are_accepted() {
+        for (value, name) in [
+            (json!("left"), "left"),
+            (json!("r"), "right"),
+            (json!(2), "middle"),
+        ] {
+            let button = mouse_button(&json!({ "mouse_button": value })).unwrap();
+            assert_eq!(button_name(&button), name);
+        }
+        assert!(mouse_button(&json!({ "mouse_button": "fourth" })).is_err());
     }
 
     #[test]
