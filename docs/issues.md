@@ -23,12 +23,12 @@ design; "mitigated" means the failure is possible but reported accurately;
 | [#57](https://github.com/iFurySt/open-computer-use/issues/57) `cgWindowNotFound` after logout | Not applicable to observation: the AX path never uses a `CGWindowID`. The screenshot path does, and reports the failure instead of returning a wrong image. |
 | [#53](https://github.com/iFurySt/open-computer-use/issues/53) drag does nothing | Designed out: a private HID event source, a move then a paced press, sixteen paced drag steps carrying deltas, then the release (`src/macos/input.rs`). |
 
-## Anything that needs a platform this project does not implement
+## Platform reports
 
 | Issue | Here |
 | --- | --- |
-| [#98](https://github.com/iFurySt/open-computer-use/issues/98), [#91](https://github.com/iFurySt/open-computer-use/issues/91), [#90](https://github.com/iFurySt/open-computer-use/issues/90), [#89](https://github.com/iFurySt/open-computer-use/issues/89) Windows | Not applicable. A non-macOS build returns "not implemented on this platform" from every tool instead of half-working. |
-| [#66](https://github.com/iFurySt/open-computer-use/issues/66), [#51](https://github.com/iFurySt/open-computer-use/issues/51), [#49](https://github.com/iFurySt/open-computer-use/issues/49), [#87](https://github.com/iFurySt/open-computer-use/issues/87) Linux, Windows | Same. |
+| [#98](https://github.com/iFurySt/open-computer-use/issues/98), [#91](https://github.com/iFurySt/open-computer-use/issues/91), [#90](https://github.com/iFurySt/open-computer-use/issues/90), [#89](https://github.com/iFurySt/open-computer-use/issues/89) Windows | Implemented over UI Automation, foreground `SendInput` and GDI capture. Windows shares the tool names and policy checks, but pointer and keyboard input follow the platform's foreground model instead of macOS background delivery. The reports remain useful as Windows app-specific field tests. |
+| [#66](https://github.com/iFurySt/open-computer-use/issues/66), [#51](https://github.com/iFurySt/open-computer-use/issues/51), [#49](https://github.com/iFurySt/open-computer-use/issues/49) Linux | Not implemented. Linux builds retain the same tool list over a stub whose calls return an explicit platform error instead of a success-shaped guess. |
 | [#23](https://github.com/iFurySt/open-computer-use/issues/23) POSIX-only install scripts | No shell scripts: `install` writes the client's config file directly (JSON, or TOML through a round-trip edit), so nothing depends on a POSIX shell. macOS only, though. |
 | [#21](https://github.com/iFurySt/open-computer-use/issues/21) stdio output mangled on Windows | Not applicable on macOS, where the server writes UTF-8 JSON to stdout and never consults a code page. Verified end to end with a non-ASCII app name (`tests/cli.rs`). |
 

@@ -271,6 +271,9 @@ record — with commands, evidence and what is still unverified — is
   from anyone but this process and answers `user takeover`.
 - **A screen preview** — `computer-use://screen` captures on read, and a
   subscriber is told after any call that could have changed it.
+- **A Windows backend** — UI Automation for trees and actions, foreground
+  `SendInput`, and GDI capture, with the same tool names as macOS. Windows uses
+  its own foreground model and does not provide macOS-style background input.
 - **Bounded, honest failure** — a read an app never answers fails within two
   seconds and leaves the previous snapshot addressable, and a call that breaks
   internally is an `isError` result rather than the end of the session.
@@ -290,9 +293,6 @@ record — with commands, evidence and what is still unverified — is
 - **A signed, notarized download** — needs a Developer ID certificate. Releases
   are unsigned archives with a SHA-256, a manifest, an install marker and
   `install.sh --check`.
-- **A Windows backend** — now implemented over UI Automation, foreground
-  SendInput and GDI capture. It follows Windows' foreground model and does not
-  provide macOS-style background operation.
 - **Pushed frames** — a stream would be bytes no client in this setup reads. The
   preview is a resource read plus an update notification.
 
