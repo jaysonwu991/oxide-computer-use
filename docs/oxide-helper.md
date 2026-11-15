@@ -56,11 +56,12 @@ this helper access. Rebuilding an ad-hoc app or moving it can affect grants;
 stable signed distribution remains release work. Observed bundle ancestry is a
 diagnostic hint, not a substitute for checking macOS's actual permission entry.
 
-Newer Oxide Desktop builds add a mouse indicator during computer tool calls,
-a persistent last-screenshot card, a compact-window dialog and **Stop task**.
-The image is a captured snapshot, labeled with its originating app; text-only
-accessibility calls do not refresh it. State belongs to the originating chat,
-including background runs and restored history.
+The GPUI Desktop window adds a mouse indicator during computer tool calls, a
+persistent last-screenshot card in the details dock and Computer Use dialog,
+per-app approval controls and **Stop task**. The image is a captured snapshot,
+labeled with its originating app; text-only accessibility calls do not refresh
+it. State belongs to the originating chat, including background runs and
+restored history.
 
 **Stop task** cancels the running Oxide turn. The helper menu terminates its MCP
 runtime and disconnects that session. Proxy death is monitored; native smoke
@@ -84,19 +85,20 @@ relative deny policy, EOF and proxy-death cleanup. It requests no OS grants and
 sends no GUI input. Live permission prompts, actual input/capture, visual QA,
 other platforms and release paths are not covered by it.
 
-Full Codex parity has **not** been achieved. The runtime still activates apps for
-keyboard/pointer events; AXPress and AXValue are its limited background paths.
-The helper does not add isolated input, continuous screen streaming, a system-wide
-cursor overlay, a settings pane, its built-in browser, or automatic
-unlock/relock behavior.
+Full Codex parity has **not** been achieved. Pointer events still activate the
+target app; keyboard events can use `background: true`, and AXPress/AXValue are
+additional background paths. The helper does not add isolated pointer input,
+continuous screen streaming, a system-wide cursor overlay, its built-in browser,
+or automatic unlock/relock behavior. GPUI Desktop supplies the per-app settings
+pane over the runtime's policy API.
 
 What the server now provides to the helper is the approval half of that model:
 per-app approvals pinned to a bundle identity, a one-call approval, a default
 policy, `apps revoke` and a self-automation rule that refuses the hosting bundle,
 all re-read on every call so a decision made while a helper session runs takes
 effect without reconnecting ([configuration](configuration.md#app-policy)). The
-helper has no settings UI for it yet, and Oxide's generic tool approvals remain a
-separate gate.
+GPUI Desktop's Computer Use dialog exposes those decisions, while Oxide's generic
+tool approvals remain a separate gate.
 
 Input isolation is narrower than a separate desktop: `type_text` and `press_key`
 with `background: true` deliver keys to one process without activating it, while
@@ -111,7 +113,7 @@ arrives from anyone but this process, and says so. See
 
 See `docs/parity.md` in this repository for each follow-up from the Oxide Desktop
 review and its status here, and the Oxide checkout's
-`docs/computer-use-parity.md` for the three-session review, evidence and
+`docs/oxide-reins-parity.md` for the session review, evidence and
 verification results. The
 [official Codex/ChatGPT Computer Use documentation](https://learn.chatgpt.com/docs/computer-use)
 is the reference for the target product's public behavior; its private runtime
